@@ -9,7 +9,7 @@ Reference: https://github.com/berlcamp/procurements-assets
 
 ---
 
-## Phase 1: Project Setup
+## Phase 1: Project Setup x
 
 ### 1.1 Initialize Next.js Project
 - `npx create-next-app@latest . --typescript --tailwind --eslint --app --src-dir`
@@ -107,7 +107,7 @@ IDs/Codes        → font-mono text-sm
 
 ---
 
-## Phase 2: Database & Types
+## Phase 2: Database & Types x
 
 ### 2.1 Create Custom Schema
 
@@ -322,7 +322,7 @@ CREATE TABLE mtop.mtop_negative_list (
 
 ---
 
-## Phase 3: Application CRUD
+## Phase 3: Application CRUD x
 
 ### 3.1 Zod Schemas
 File: `src/lib/schemas/mtop.ts`

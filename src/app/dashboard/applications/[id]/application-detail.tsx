@@ -1,0 +1,528 @@
+"use client"
+
+import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
+import { PageHeader } from "@/components/layout/page-header"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Separator } from "@/components/ui/separator"
+import { StatusBadge } from "@/components/shared/status-badge"
+import { ApprovalStepper } from "@/components/shared/approval-stepper"
+import { TimelineLog } from "@/components/shared/timeline-log"
+import { DocumentChecklist } from "@/components/mtop/document-checklist"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import {
+  User,
+  Bike,
+  MapPin,
+  Phone,
+  Calendar,
+  Hash,
+  AlertCircle,
+  AlertTriangle,
+  Loader2,
+} from "lucide-react"
+import { format } from "date-fns"
+import { updateApplicationStatus } from "@/lib/actions/applications"
+import { checkNegativeList } from "@/lib/actions/documents"
+import { usePermissions } from "@/lib/hooks/use-permissions"
+import type { MtopStatus } from "@/types/database"
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function ApplicationDetail({ application }: { application: any }) {
+  const router = useRouter()
+  const { can } = usePermissions()
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [remarks, setRemarks] = useState("")
+  const [negativeListMatches, setNegativeListMatches] = useState<
+    { id: string; applicant_name: string; reason: string }[]
+  >([])
+
+  // Check negative list on mount
+  useEffect(() => {
+    if (application.applicant_name) {
+      checkNegativeList(application.applicant_name).then((result) => {
+        if (!result.error && result.data) {
+          setNegativeListMatches(result.data)
+        }
+      })
+    }
+  }, [application.applicant_name])
+
+  const isOnNegativeList = negativeListMatches.length > 0
+
+  async function handleStatusChange(
+    newStatus: MtopStatus,
+    action: "approved" | "rejected" | "returned" | "forwarded"
+  ) {
+    if (action === "returned" && !remarks.trim()) {
+      setError("Remarks are required when returning an application.")
+      return
+    }
+
+    setLoading(true)
+    setError(null)
+
+    const result = await updateApplicationStatus(
+      application.id,
+      newStatus,
+      action,
+      remarks || undefined
+    )
+
+    if (result.error) {
+      setError(result.error)
+      setLoading(false)
+      return
+    }
+
+    router.refresh()
+    setLoading(false)
+    setRemarks("")
+  }
+
+  const docs = application.documents ?? []
+  const verifiedCount = docs.filter(
+    (d: { is_verified: boolean }) => d.is_verified
+  ).length
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title={application.application_number}
+        subtitle={`${application.applicant_name} — ${application.route ?? "No route"}`}
+        actions={<StatusBadge status={application.status} />}
+      />
+
+      {error && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+
+      {/* Negative List Warning */}
+      {isOnNegativeList && (
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>Negative List Match</AlertTitle>
+          <AlertDescription>
+            This applicant matches {negativeListMatches.length} entry(ies) on
+            the negative list:
+            {negativeListMatches.map((m) => (
+              <span key={m.id} className="block mt-1">
+                <strong>{m.applicant_name}</strong> — {m.reason}
+              </span>
+            ))}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      <div className="grid gap-6 lg:grid-cols-3">
+        {/* Main content — 2/3 */}
+        <div className="space-y-6 lg:col-span-2">
+          {/* Applicant Info */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <User className="h-4 w-4" />
+                Applicant Information
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <dl className="grid gap-4 sm:grid-cols-2">
+                <InfoItem label="Full Name" value={application.applicant_name} />
+                <InfoItem
+                  label="Contact Number"
+                  value={application.contact_number}
+                  icon={<Phone className="h-3.5 w-3.5" />}
+                />
+                <InfoItem
+                  label="Address"
+                  value={application.applicant_address}
+                  className="sm:col-span-2"
+                />
+              </dl>
+            </CardContent>
+          </Card>
+
+          {/* Tricycle Details */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Bike className="h-4 w-4" />
+                Tricycle Details
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <dl className="grid gap-4 sm:grid-cols-2">
+                <InfoItem
+                  label="Body Number"
+                  value={application.tricycle_body_number}
+                  mono
+                />
+                <InfoItem
+                  label="Plate Number"
+                  value={application.plate_number}
+                  mono
+                />
+                <InfoItem
+                  label="Motor Number"
+                  value={application.motor_number}
+                  mono
+                />
+                <InfoItem
+                  label="Chassis Number"
+                  value={application.chassis_number}
+                  mono
+                />
+                <InfoItem
+                  label="Route"
+                  value={application.route}
+                  icon={<MapPin className="h-3.5 w-3.5" />}
+                />
+                <InfoItem
+                  label="Fiscal Year"
+                  value={application.fiscal_year?.toString()}
+                  icon={<Calendar className="h-3.5 w-3.5" />}
+                />
+              </dl>
+            </CardContent>
+          </Card>
+
+          {/* Document Verification Checklist */}
+          <DocumentChecklist
+            documents={docs}
+            applicationId={application.id}
+            canVerify={
+              can("application.verify") &&
+              application.status === "for_verification"
+            }
+          />
+
+          {/* Stage Actions */}
+          <StageActions
+            status={application.status}
+            can={can}
+            loading={loading}
+            remarks={remarks}
+            onRemarksChange={setRemarks}
+            onAction={handleStatusChange}
+            verifiedCount={verifiedCount}
+            totalDocs={docs.length}
+            inspection={application.inspection}
+            assessment={application.assessment}
+            payments={application.payments}
+            isOnNegativeList={isOnNegativeList}
+          />
+        </div>
+
+        {/* Sidebar — 1/3 */}
+        <div className="space-y-6">
+          {/* Approval Stepper */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Progress</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ApprovalStepper status={application.status} />
+            </CardContent>
+          </Card>
+
+          {/* Summary */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Summary</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <SummaryRow
+                label="Application #"
+                value={application.application_number}
+                mono
+              />
+              <SummaryRow label="Applicant" value={application.applicant_name} />
+              <SummaryRow
+                label="Submitted"
+                value={format(
+                  new Date(application.submitted_at),
+                  "MMM d, yyyy"
+                )}
+              />
+              {application.due_date && (
+                <SummaryRow
+                  label="Due Date"
+                  value={format(new Date(application.due_date), "MMM d, yyyy")}
+                />
+              )}
+              {application.granted_at && (
+                <SummaryRow
+                  label="Granted"
+                  value={format(
+                    new Date(application.granted_at),
+                    "MMM d, yyyy"
+                  )}
+                />
+              )}
+              {application.assessment && (
+                <>
+                  <Separator />
+                  <SummaryRow
+                    label="Total Fees"
+                    value={`₱${Number(application.assessment.total_amount).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`}
+                  />
+                </>
+              )}
+              {application.creator && (
+                <>
+                  <Separator />
+                  <SummaryRow
+                    label="Created By"
+                    value={application.creator.full_name}
+                  />
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Timeline */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Activity</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <TimelineLog logs={application.approval_logs ?? []} />
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function InfoItem({
+  label,
+  value,
+  icon,
+  mono,
+  className,
+}: {
+  label: string
+  value?: string | null
+  icon?: React.ReactNode
+  mono?: boolean
+  className?: string
+}) {
+  return (
+    <div className={className}>
+      <dt className="text-xs text-muted-foreground mb-1">{label}</dt>
+      <dd className="flex items-center gap-1.5 text-sm">
+        {icon}
+        <span className={mono ? "font-mono" : undefined}>
+          {value || "—"}
+        </span>
+      </dd>
+    </div>
+  )
+}
+
+function SummaryRow({
+  label,
+  value,
+  mono,
+}: {
+  label: string
+  value: string
+  mono?: boolean
+}) {
+  return (
+    <div className="flex items-center justify-between text-sm">
+      <span className="text-muted-foreground">{label}</span>
+      <span className={mono ? "font-mono" : "font-medium"}>{value}</span>
+    </div>
+  )
+}
+
+function StageActions({
+  status,
+  can,
+  loading,
+  remarks,
+  onRemarksChange,
+  onAction,
+  verifiedCount,
+  totalDocs,
+  inspection,
+  assessment,
+  payments,
+  isOnNegativeList,
+}: {
+  status: MtopStatus
+  can: (p: string) => boolean
+  loading: boolean
+  remarks: string
+  onRemarksChange: (v: string) => void
+  onAction: (
+    status: MtopStatus,
+    action: "approved" | "rejected" | "returned" | "forwarded"
+  ) => void
+  verifiedCount: number
+  totalDocs: number
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  inspection: any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  assessment: any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  payments: any[]
+  isOnNegativeList: boolean
+}) {
+  // Determine which actions are available based on current status and permissions
+  let title = ""
+  let description = ""
+  let forwardLabel = ""
+  let forwardStatus: MtopStatus | null = null
+  let canForward = false
+  let canReturn = true
+
+  switch (status) {
+    case "for_verification":
+      title = "Verification Actions"
+      description = "Verify all documents before forwarding to inspection."
+      forwardLabel = "Forward to Inspection"
+      forwardStatus = "for_inspection"
+      canForward =
+        can("application.verify") &&
+        verifiedCount === totalDocs &&
+        !isOnNegativeList
+      canReturn = can("application.verify")
+      break
+    case "for_inspection":
+      title = "Inspection Actions"
+      description = "Complete the inspection before forwarding to assessment."
+      forwardLabel = "Forward to Assessment"
+      forwardStatus = "for_assessment"
+      canForward =
+        can("inspection.conduct") && inspection?.result === "passed"
+      canReturn = can("inspection.conduct")
+      break
+    case "for_assessment":
+      title = "Assessment Actions"
+      description = "Assess fees and record payment before forwarding."
+      forwardLabel = "Forward to Approval"
+      forwardStatus = "for_approval"
+      canForward =
+        can("payment.record") &&
+        assessment?.approved_at &&
+        payments?.length > 0
+      canReturn = can("assessment.create")
+      break
+    case "for_approval":
+      title = "Approval Actions"
+      description = "Review the complete application and grant the MTOP."
+      forwardLabel = "Approve & Grant MTOP"
+      forwardStatus = "granted"
+      canForward = can("application.grant")
+      canReturn = can("application.approve")
+      break
+    default:
+      return null
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-lg flex items-center gap-2">
+          <Hash className="h-4 w-4" />
+          {title}
+        </CardTitle>
+        <CardDescription>{description}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Remarks */}
+        <div className="space-y-2">
+          <label className="text-sm font-medium" htmlFor="remarks">
+            Remarks (required for return)
+          </label>
+          <textarea
+            id="remarks"
+            className="flex w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 min-h-[80px]"
+            placeholder="Add remarks..."
+            value={remarks}
+            onChange={(e) => onRemarksChange(e.target.value)}
+          />
+        </div>
+
+        {/* Action buttons */}
+        <div className="flex gap-2">
+          {forwardStatus && canForward && (
+            <Button
+              onClick={() => onAction(forwardStatus!, "forwarded")}
+              disabled={loading}
+            >
+              {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {forwardLabel}
+            </Button>
+          )}
+
+          {canReturn && (
+            <Button
+              variant="outline"
+              onClick={() =>
+                onAction(
+                  "returned",
+                  "returned"
+                )
+              }
+              disabled={loading}
+            >
+              Return
+            </Button>
+          )}
+
+          {status === "for_approval" && can("application.approve") && (
+            <Button
+              variant="destructive"
+              onClick={() => onAction("rejected", "rejected")}
+              disabled={loading}
+            >
+              Reject
+            </Button>
+          )}
+        </div>
+
+        {/* Hints */}
+        {status === "for_verification" && isOnNegativeList && (
+          <p className="text-xs text-destructive">
+            Cannot forward — applicant is on the negative list.
+          </p>
+        )}
+        {status === "for_verification" &&
+          !isOnNegativeList &&
+          verifiedCount < totalDocs && (
+            <p className="text-xs text-muted-foreground">
+              {totalDocs - verifiedCount} document(s) still need verification
+              before forwarding.
+            </p>
+          )}
+        {status === "for_inspection" && !inspection && (
+          <p className="text-xs text-muted-foreground">
+            Inspection has not been conducted yet.
+          </p>
+        )}
+        {status === "for_inspection" &&
+          inspection?.result === "failed" && (
+            <p className="text-xs text-destructive">
+              Inspection failed. Return to applicant for corrections.
+            </p>
+          )}
+      </CardContent>
+    </Card>
+  )
+}
