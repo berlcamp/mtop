@@ -34,6 +34,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Loader2,
+  Upload,
+  CheckCircle2,
+  XCircle,
 } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
 import {
@@ -41,6 +44,7 @@ import {
   addToNegativeList,
   updateNegativeListEntry,
   toggleNegativeListEntry,
+  bulkAddToNegativeList,
 } from "@/lib/actions/negative-list"
 
 const PAGE_SIZE = 20
@@ -116,7 +120,10 @@ export function NegativeListContent() {
         title="Negative List"
         subtitle="Manage restricted applicants"
         actions={
-          <AddEntryDialog onSuccess={fetchEntries} />
+          <div className="flex gap-2">
+            <CsvImportDialog onSuccess={fetchEntries} />
+            <AddEntryDialog onSuccess={fetchEntries} />
+          </div>
         }
       />
 
@@ -246,6 +253,234 @@ export function NegativeListContent() {
         </div>
       )}
     </div>
+  )
+}
+
+interface CsvRow {
+  applicant_name: string
+  reason: string
+  error?: string
+}
+
+function parseCsv(text: string): CsvRow[] {
+  const lines = text.split(/\r?\n/)
+  const results: CsvRow[] = []
+
+  // Detect and skip header row
+  const firstLine = lines[0]?.trim().toLowerCase() ?? ""
+  const startIdx =
+    firstLine.startsWith("name") || firstLine.startsWith("applicant")
+      ? 1
+      : 0
+
+  for (let i = startIdx; i < lines.length; i++) {
+    const line = lines[i].trim()
+    if (!line) continue
+
+    // Simple CSV split that handles double-quoted fields
+    const cols: string[] = []
+    let current = ""
+    let inQuotes = false
+    for (let j = 0; j < line.length; j++) {
+      const ch = line[j]
+      if (ch === '"') {
+        inQuotes = !inQuotes
+      } else if (ch === "," && !inQuotes) {
+        cols.push(current.trim())
+        current = ""
+      } else {
+        current += ch
+      }
+    }
+    cols.push(current.trim())
+
+    const [name, reason] = cols
+    if (!name && !reason) continue
+
+    if (!name) {
+      results.push({ applicant_name: "", reason: reason ?? "", error: "Name is required" })
+    } else if (!reason) {
+      results.push({ applicant_name: name, reason: "", error: "Reason is required" })
+    } else {
+      results.push({ applicant_name: name, reason })
+    }
+  }
+
+  return results
+}
+
+function CsvImportDialog({ onSuccess }: { onSuccess: () => void }) {
+  const [open, setOpen] = useState(false)
+  const [rows, setRows] = useState<CsvRow[]>([])
+  const [submitting, setSubmitting] = useState(false)
+  const [result, setResult] = useState<{ inserted: number; failed: number } | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!file.name.endsWith(".csv") && file.type !== "text/csv") {
+      setError("Please upload a .csv file.")
+      setRows([])
+      return
+    }
+    setError(null)
+    setResult(null)
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      const text = ev.target?.result as string
+      setRows(parseCsv(text))
+    }
+    reader.readAsText(file)
+  }
+
+  const validRows = rows.filter((r) => !r.error)
+  const invalidRows = rows.filter((r) => !!r.error)
+
+  async function handleImport() {
+    if (validRows.length === 0) return
+    setSubmitting(true)
+    setError(null)
+    const res = await bulkAddToNegativeList(validRows)
+    setSubmitting(false)
+    if (res.error) {
+      setError(res.error)
+      return
+    }
+    setResult({ inserted: res.inserted, failed: invalidRows.length })
+    onSuccess()
+  }
+
+  function handleOpenChange(val: boolean) {
+    setOpen(val)
+    if (!val) {
+      setRows([])
+      setError(null)
+      setResult(null)
+    }
+  }
+
+  function downloadSample() {
+    const csv = "name,reason\nJuan dela Cruz,Falsified documents\nMaria Santos,Previous violation"
+    const blob = new Blob([csv], { type: "text/csv" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = "negative-list-sample.csv"
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogTrigger render={<Button variant="outline" size="sm" />}>
+        <Upload className="mr-2 h-4 w-4" />
+        Import CSV
+      </DialogTrigger>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Import from CSV</DialogTitle>
+          <DialogDescription>
+            Upload a CSV file with columns <code className="text-xs bg-muted px-1 rounded">name</code> and{" "}
+            <code className="text-xs bg-muted px-1 rounded">reason</code>.{" "}
+            <button
+              type="button"
+              onClick={downloadSample}
+              className="text-primary underline underline-offset-2 text-sm"
+            >
+              Download sample
+            </button>
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-2">
+          {error && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+
+          {result ? (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-sm text-green-600">
+                <CheckCircle2 className="h-4 w-4" />
+                {result.inserted} {result.inserted === 1 ? "entry" : "entries"} imported successfully.
+              </div>
+              {result.failed > 0 && (
+                <div className="flex items-center gap-2 text-sm text-destructive">
+                  <XCircle className="h-4 w-4" />
+                  {result.failed} {result.failed === 1 ? "row" : "rows"} skipped due to errors.
+                </div>
+              )}
+            </div>
+          ) : (
+            <>
+              <div>
+                <Label htmlFor="csv-file">CSV File</Label>
+                <Input
+                  id="csv-file"
+                  type="file"
+                  accept=".csv,text/csv"
+                  onChange={handleFileChange}
+                  className="mt-1.5 cursor-pointer"
+                />
+              </div>
+
+              {rows.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-sm text-muted-foreground">
+                    Preview — {validRows.length} valid, {invalidRows.length} with errors
+                  </p>
+                  <div className="rounded-md border max-h-56 overflow-y-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-8">#</TableHead>
+                          <TableHead>Name</TableHead>
+                          <TableHead>Reason</TableHead>
+                          <TableHead className="w-20">Status</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {rows.map((row, i) => (
+                          <TableRow key={i} className={row.error ? "bg-destructive/5" : undefined}>
+                            <TableCell className="text-muted-foreground text-xs">{i + 1}</TableCell>
+                            <TableCell className="text-sm">{row.applicant_name || <span className="text-muted-foreground italic">empty</span>}</TableCell>
+                            <TableCell className="text-sm max-w-[220px] truncate">{row.reason || <span className="text-muted-foreground italic">empty</span>}</TableCell>
+                            <TableCell>
+                              {row.error ? (
+                                <span className="text-xs text-destructive">{row.error}</span>
+                              ) : (
+                                <span className="text-xs text-green-600">OK</span>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        <DialogFooter>
+          {result ? (
+            <Button onClick={() => handleOpenChange(false)}>Close</Button>
+          ) : (
+            <Button
+              onClick={handleImport}
+              disabled={validRows.length === 0 || submitting}
+            >
+              {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Import {validRows.length > 0 ? `${validRows.length} entries` : ""}
+            </Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 

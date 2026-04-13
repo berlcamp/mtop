@@ -156,7 +156,18 @@ function LoginForm() {
 
           {/* Login card */}
           <div className="rounded-xl border bg-card p-6 shadow-sm space-y-4">
-            {error && (
+            {error === "unauthorized" && (
+              <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-center">
+                <p className="text-sm font-medium text-destructive">
+                  Access Denied
+                </p>
+                <p className="text-xs text-destructive/80 mt-1">
+                  Your account is not authorized to access this system.
+                  Contact your administrator to request access.
+                </p>
+              </div>
+            )}
+            {error && error !== "unauthorized" && (
               <p className="text-sm text-destructive text-center">
                 Authentication failed. Please try again.
               </p>

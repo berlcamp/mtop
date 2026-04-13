@@ -55,9 +55,9 @@ export type AssessmentFormValues = z.infer<typeof assessmentSchema>
 // Payment schema
 export const paymentSchema = z.object({
   or_number: z.string().min(1, "OR number is required"),
-  amount_paid: z.coerce.number().positive("Amount must be greater than 0"),
+  amount_paid: z.number().positive("Amount must be greater than 0"),
   payment_date: z.string().optional(),
-  payment_method: z.enum(["cash", "check"]).default("cash"),
+  payment_method: z.enum(["cash", "check"]),
 })
 
 export type PaymentFormValues = z.infer<typeof paymentSchema>

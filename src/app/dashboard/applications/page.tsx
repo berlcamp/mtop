@@ -18,6 +18,7 @@ export default function ApplicationsPage({
         actions={
           <Button
             size="sm"
+            nativeButton={false}
             render={<Link href="/dashboard/applications/new" />}
           >
             <Plus className="mr-2 h-4 w-4" />

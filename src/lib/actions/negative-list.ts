@@ -116,3 +116,29 @@ export async function toggleNegativeListEntry(
     return { error: (e as Error).message }
   }
 }
+
+export async function bulkAddToNegativeList(
+  entries: Array<{ applicant_name: string; reason: string }>
+) {
+  try {
+    const { supabase, user } = await getAuthUser()
+
+    const rows = entries.map((e) => ({
+      applicant_name: e.applicant_name,
+      reason: e.reason,
+      added_by: user.id,
+    }))
+
+    const { error } = await supabase
+      .schema("mtop")
+      .from("mtop_negative_list")
+      .insert(rows)
+
+    if (error) return { error: error.message, inserted: 0 }
+
+    revalidatePath("/dashboard/negative-list")
+    return { error: null, inserted: rows.length }
+  } catch (e) {
+    return { error: (e as Error).message, inserted: 0 }
+  }
+}

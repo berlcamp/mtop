@@ -17,6 +17,9 @@ import { StatusBadge } from "@/components/shared/status-badge"
 import { ApprovalStepper } from "@/components/shared/approval-stepper"
 import { TimelineLog } from "@/components/shared/timeline-log"
 import { DocumentChecklist } from "@/components/mtop/document-checklist"
+import { InspectionChecklist } from "@/components/mtop/inspection-checklist"
+import { FeeAssessmentForm } from "@/components/mtop/fee-assessment-form"
+import { PaymentForm } from "@/components/mtop/payment-form"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import {
   User,
@@ -27,6 +30,7 @@ import {
   Hash,
   AlertCircle,
   AlertTriangle,
+  CheckCircle2,
   Loader2,
 } from "lucide-react"
 import { format } from "date-fns"
@@ -106,6 +110,32 @@ export function ApplicationDetail({ application }: { application: any }) {
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+
+      {/* Granted Banner */}
+      {application.status === "granted" && (
+        <Alert className="border-green-200 bg-green-50">
+          <CheckCircle2 className="h-4 w-4 text-green-600" />
+          <AlertTitle className="text-green-800">MTOP Granted</AlertTitle>
+          <AlertDescription className="text-green-700">
+            This application has been approved and the MTOP permit has been
+            granted
+            {application.granted_at &&
+              ` on ${format(new Date(application.granted_at), "MMMM d, yyyy")}`}
+            .
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Rejected Banner */}
+      {application.status === "rejected" && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Application Rejected</AlertTitle>
+          <AlertDescription>
+            This application has been rejected. See the activity log for details.
+          </AlertDescription>
         </Alert>
       )}
 
@@ -207,6 +237,44 @@ export function ApplicationDetail({ application }: { application: any }) {
               application.status === "for_verification"
             }
           />
+
+          {/* Inspection — show from for_inspection stage onward */}
+          {application.status !== "for_verification" && (
+            <InspectionChecklist
+              applicationId={application.id}
+              existingInspection={application.inspection}
+              canInspect={can("inspection.conduct")}
+              status={application.status}
+            />
+          )}
+
+          {/* Assessment & Payment — show from for_assessment stage onward */}
+          {["for_assessment", "for_approval", "granted"].includes(
+            application.status
+          ) && (
+            <>
+              <FeeAssessmentForm
+                applicationId={application.id}
+                dueDate={application.due_date}
+                existingAssessment={application.assessment}
+                canAssess={can("assessment.create")}
+                canApproveAssessment={can("assessment.approve")}
+                status={application.status}
+              />
+
+              {application.assessment && (
+                <PaymentForm
+                  applicationId={application.id}
+                  assessmentId={application.assessment.id}
+                  totalAmount={Number(application.assessment.total_amount)}
+                  isAssessmentApproved={!!application.assessment.approved_at}
+                  existingPayments={application.payments ?? []}
+                  canRecord={can("payment.record")}
+                  status={application.status}
+                />
+              )}
+            </>
+          )}
 
           {/* Stage Actions */}
           <StageActions
@@ -390,6 +458,7 @@ function StageActions({
   let forwardStatus: MtopStatus | null = null
   let canForward = false
   let canReturn = true
+  let isGrantAction = false
 
   switch (status) {
     case "for_verification":
@@ -430,6 +499,8 @@ function StageActions({
       forwardStatus = "granted"
       canForward = can("application.grant")
       canReturn = can("application.approve")
+      // Use "approved" action for granting instead of "forwarded"
+      isGrantAction = true
       break
     default:
       return null
@@ -463,7 +534,12 @@ function StageActions({
         <div className="flex gap-2">
           {forwardStatus && canForward && (
             <Button
-              onClick={() => onAction(forwardStatus!, "forwarded")}
+              onClick={() =>
+                onAction(
+                  forwardStatus!,
+                  isGrantAction ? "approved" : "forwarded"
+                )
+              }
               disabled={loading}
             >
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

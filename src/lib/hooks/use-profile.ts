@@ -62,7 +62,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
         `
         )
         .eq("id", user.id)
-        .single()
+        .maybeSingle()
 
       setProfile(data as unknown as UserProfile)
       setIsLoading(false)

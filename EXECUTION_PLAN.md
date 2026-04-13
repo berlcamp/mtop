@@ -9,7 +9,7 @@ Reference: https://github.com/berlcamp/procurements-assets
 
 ---
 
-## Phase 1: Project Setup x
+## [x] Phase 1: Project Setup
 
 ### 1.1 Initialize Next.js Project
 - `npx create-next-app@latest . --typescript --tailwind --eslint --app --src-dir`
@@ -107,7 +107,7 @@ IDs/Codes        → font-mono text-sm
 
 ---
 
-## Phase 2: Database & Types x
+## [x] Phase 2: Database & Types
 
 ### 2.1 Create Custom Schema
 
@@ -322,7 +322,7 @@ CREATE TABLE mtop.mtop_negative_list (
 
 ---
 
-## Phase 3: Application CRUD x
+## [x] Phase 3: Application CRUD
 
 ### 3.1 Zod Schemas
 File: `src/lib/schemas/mtop.ts`
@@ -387,7 +387,7 @@ File: `src/app/dashboard/applications/[id]/page.tsx`
 
 ---
 
-## Phase 4: Stage 1 — For Verification (CADM)
+## [x] Phase 4: Stage 1 — For Verification (CADM)
 
 ### 4.1 Document Checklist Component
 File: `src/components/mtop/document-checklist.tsx`
@@ -420,7 +420,7 @@ File: `src/app/dashboard/negative-list/page.tsx`
 
 ---
 
-## Phase 5: Stage 2 — For Inspection (CADM)
+## [x] Phase 5: Stage 2 — For Inspection (CADM)
 
 ### 5.1 Inspection Checklist Component
 File: `src/components/mtop/inspection-checklist.tsx`
@@ -460,7 +460,7 @@ File: `src/lib/actions/inspections.ts`
 
 ---
 
-## Phase 6: Stage 3 — For Assessment (CTO)
+## [x] Phase 6: Stage 3 — For Assessment (CTO)
 
 ### 6.1 Fee Assessment Form
 File: `src/components/mtop/fee-assessment-form.tsx`
@@ -548,7 +548,7 @@ File: `src/lib/actions/payments.ts`
 
 ---
 
-## Phase 7: Stage 4-5 — For Approval & Granted (CADM)
+## [x] Phase 7: Stage 4-5 — For Approval & Granted (CADM)
 
 ### 7.1 Approval Review
 - CADM Head reviews complete application:
@@ -570,7 +570,7 @@ File: `src/lib/actions/payments.ts`
 
 ---
 
-## Phase 8: Dashboard & Reports
+## [x] Phase 8: Dashboard & Reports
 
 ### 8.1 Dashboard Home
 File: `src/app/dashboard/page.tsx`
