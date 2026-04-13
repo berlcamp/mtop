@@ -70,3 +70,11 @@ export const statusActionSchema = z.object({
 export const returnActionSchema = z.object({
   remarks: z.string().min(1, "Remarks are required when returning an application"),
 })
+
+// System settings schema
+export const systemSettingsSchema = z.object({
+  permit_validity_years: z.coerce.number().int().min(1).max(10),
+  renewal_window_days: z.coerce.number().int().min(1).max(365),
+})
+
+export type SystemSettingsFormValues = z.infer<typeof systemSettingsSchema>

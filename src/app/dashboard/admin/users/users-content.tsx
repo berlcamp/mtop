@@ -31,6 +31,7 @@ import {
   Trash2,
   AlertCircle,
   Loader2,
+  Users,
 } from "lucide-react"
 import { addUser, updateUser, deleteUser } from "@/lib/actions/users"
 import { formatDistanceToNow } from "date-fns"
@@ -94,44 +95,47 @@ export function UsersContent({
         <AddUserDialog roles={roles} offices={offices} />
       </div>
 
-      <div className="rounded-lg border">
+      <div className="rounded-xl border border-border/60 overflow-hidden bg-card shadow-sm">
         <Table>
           <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Email</TableHead>
-              <TableHead>Office</TableHead>
-              <TableHead>Roles</TableHead>
-              <TableHead>Added</TableHead>
-              <TableHead className="w-[100px]">Actions</TableHead>
+            <TableRow className="bg-muted/40 hover:bg-muted/40 border-b border-border/60">
+              <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">Name</TableHead>
+              <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">Email</TableHead>
+              <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80 hidden md:table-cell">Office</TableHead>
+              <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">Roles</TableHead>
+              <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80 hidden sm:table-cell">Added</TableHead>
+              <TableHead className="w-[80px]" />
             </TableRow>
           </TableHeader>
           <TableBody>
             {users.length === 0 ? (
               <TableRow>
-                <TableCell
-                  colSpan={6}
-                  className="text-center py-8 text-muted-foreground"
-                >
-                  No users yet. Add one to get started.
+                <TableCell colSpan={6} className="text-center py-16 text-muted-foreground">
+                  <div className="flex flex-col items-center gap-2">
+                    <Users className="h-8 w-8 text-muted-foreground/30" />
+                    <p className="text-sm font-medium">No users yet</p>
+                    <p className="text-xs text-muted-foreground/70">
+                      Add a user to get started
+                    </p>
+                  </div>
                 </TableCell>
               </TableRow>
             ) : (
               users.map((user) => (
-                <TableRow key={user.id}>
-                  <TableCell className="font-medium">
+                <TableRow key={user.id} className="hover:bg-muted/30 transition-colors border-border/40">
+                  <TableCell className="font-semibold text-foreground">
                     {user.full_name}
                   </TableCell>
-                  <TableCell className="text-muted-foreground">
+                  <TableCell className="text-sm text-muted-foreground">
                     {user.email}
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="hidden md:table-cell">
                     {user.office ? (
-                      <Badge variant="secondary" className="text-xs">
+                      <Badge variant="secondary" className="text-xs font-medium">
                         {user.office.code}
                       </Badge>
                     ) : (
-                      "—"
+                      <span className="text-muted-foreground/50 text-xs">—</span>
                     )}
                   </TableCell>
                   <TableCell>
@@ -140,25 +144,25 @@ export function UsersContent({
                         <Badge
                           key={ur.id}
                           variant="outline"
-                          className="text-xs"
+                          className="text-xs border-primary/20 text-primary/80"
                         >
                           {ur.role?.name ?? ur.role_id}
                         </Badge>
                       ))}
                       {(!user.user_roles || user.user_roles.length === 0) && (
-                        <span className="text-xs text-muted-foreground">
+                        <span className="text-xs text-muted-foreground/50">
                           No roles
                         </span>
                       )}
                     </div>
                   </TableCell>
-                  <TableCell className="text-muted-foreground text-xs">
+                  <TableCell className="text-xs text-muted-foreground hidden sm:table-cell">
                     {formatDistanceToNow(new Date(user.created_at), {
                       addSuffix: true,
                     })}
                   </TableCell>
                   <TableCell>
-                    <div className="flex gap-1">
+                    <div className="flex gap-1 justify-end">
                       <EditUserDialog
                         user={user}
                         roles={roles}
@@ -171,6 +175,7 @@ export function UsersContent({
                           handleDelete(user.id, user.full_name)
                         }
                         title="Remove user"
+                        className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
@@ -187,6 +192,28 @@ export function UsersContent({
         Only users listed here can sign in. When you add a user by email, they
         will be able to log in with their Google account matching that email.
       </p>
+    </div>
+  )
+}
+
+function FieldGroup({
+  label,
+  htmlFor,
+  children,
+  hint,
+}: {
+  label: string
+  htmlFor?: string
+  children: React.ReactNode
+  hint?: string
+}) {
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={htmlFor} className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        {label}
+      </Label>
+      {children}
+      {hint && <p className="text-xs text-muted-foreground/70">{hint}</p>}
     </div>
   )
 }
@@ -248,26 +275,26 @@ function AddUserDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger render={<Button size="sm" />}>
-        <Plus className="mr-2 h-4 w-4" />
+        <Plus className="h-3.5 w-3.5" />
         Add User
       </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-[420px]">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle>Add User</DialogTitle>
             <DialogDescription>
-              Add a user by their Google email. They will be able to log in once
-              added.
+              Add a user by their Google email. They can sign in once added.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-4">
+          <div className="space-y-4 py-5">
             {error && (
-              <p className="text-sm text-destructive">{error}</p>
+              <div className="rounded-lg bg-destructive/10 border border-destructive/20 px-3 py-2.5">
+                <p className="text-sm text-destructive">{error}</p>
+              </div>
             )}
 
-            <div className="space-y-2">
-              <Label htmlFor="add-email">Google Email</Label>
+            <FieldGroup label="Google Email" htmlFor="add-email">
               <Input
                 id="add-email"
                 type="email"
@@ -275,20 +302,18 @@ function AddUserDialog({
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="user@gmail.com"
               />
-            </div>
+            </FieldGroup>
 
-            <div className="space-y-2">
-              <Label htmlFor="add-name">Full Name</Label>
+            <FieldGroup label="Full Name" htmlFor="add-name">
               <Input
                 id="add-name"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 placeholder="Juan Dela Cruz"
               />
-            </div>
+            </FieldGroup>
 
-            <div className="space-y-2">
-              <Label htmlFor="add-office">Office</Label>
+            <FieldGroup label="Office" htmlFor="add-office">
               <select
                 id="add-office"
                 value={officeId}
@@ -302,35 +327,36 @@ function AddUserDialog({
                   </option>
                 ))}
               </select>
-            </div>
+            </FieldGroup>
 
-            <div className="space-y-2">
-              <Label>Roles</Label>
-              <div className="space-y-2">
+            <FieldGroup label="Roles">
+              <div className="space-y-2.5 rounded-lg border border-border/60 bg-muted/30 p-3">
                 {roles.map((role) => (
-                  <div key={role.id} className="flex items-center gap-2">
+                  <div key={role.id} className="flex items-center gap-2.5">
                     <Checkbox
                       checked={selectedRoles.includes(role.id)}
                       onCheckedChange={(checked) =>
                         toggleRole(role.id, checked as boolean)
                       }
                     />
-                    <Label className="text-sm cursor-pointer">
-                      {role.name}
-                      <span className="text-xs text-muted-foreground ml-1">
+                    <div className="flex items-baseline gap-1.5">
+                      <span className="text-sm font-medium text-foreground">
+                        {role.name}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
                         ({role.code})
                       </span>
-                    </Label>
+                    </div>
                   </div>
                 ))}
               </div>
-            </div>
+            </FieldGroup>
           </div>
 
           <DialogFooter>
             <Button type="submit" disabled={submitting}>
               {submitting && (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
               )}
               Add User
             </Button>
@@ -398,29 +424,29 @@ function EditUserDialog({
       <DialogTrigger render={<Button variant="ghost" size="icon-xs" />}>
         <Pencil className="h-3.5 w-3.5" />
       </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-[420px]">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle>Edit User</DialogTitle>
             <DialogDescription>{user.email}</DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-4">
+          <div className="space-y-4 py-5">
             {error && (
-              <p className="text-sm text-destructive">{error}</p>
+              <div className="rounded-lg bg-destructive/10 border border-destructive/20 px-3 py-2.5">
+                <p className="text-sm text-destructive">{error}</p>
+              </div>
             )}
 
-            <div className="space-y-2">
-              <Label htmlFor="edit-name">Full Name</Label>
+            <FieldGroup label="Full Name" htmlFor="edit-name">
               <Input
                 id="edit-name"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
               />
-            </div>
+            </FieldGroup>
 
-            <div className="space-y-2">
-              <Label htmlFor="edit-office">Office</Label>
+            <FieldGroup label="Office" htmlFor="edit-office">
               <select
                 id="edit-office"
                 value={officeId}
@@ -434,35 +460,36 @@ function EditUserDialog({
                   </option>
                 ))}
               </select>
-            </div>
+            </FieldGroup>
 
-            <div className="space-y-2">
-              <Label>Roles</Label>
-              <div className="space-y-2">
+            <FieldGroup label="Roles">
+              <div className="space-y-2.5 rounded-lg border border-border/60 bg-muted/30 p-3">
                 {roles.map((role) => (
-                  <div key={role.id} className="flex items-center gap-2">
+                  <div key={role.id} className="flex items-center gap-2.5">
                     <Checkbox
                       checked={selectedRoles.includes(role.id)}
                       onCheckedChange={(checked) =>
                         toggleRole(role.id, checked as boolean)
                       }
                     />
-                    <Label className="text-sm cursor-pointer">
-                      {role.name}
-                      <span className="text-xs text-muted-foreground ml-1">
+                    <div className="flex items-baseline gap-1.5">
+                      <span className="text-sm font-medium text-foreground">
+                        {role.name}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
                         ({role.code})
                       </span>
-                    </Label>
+                    </div>
                   </div>
                 ))}
               </div>
-            </div>
+            </FieldGroup>
           </div>
 
           <DialogFooter>
             <Button type="submit" disabled={submitting}>
               {submitting && (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
               )}
               Save Changes
             </Button>

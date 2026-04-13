@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useState, useTransition, useRef } from "react"
 import {
   Card,
   CardContent,
@@ -12,8 +12,10 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
-import { FileText } from "lucide-react"
-import { verifyDocument, updateDocumentRemarks } from "@/lib/actions/documents"
+import { Button } from "@/components/ui/button"
+import { FileText, Paperclip, ExternalLink, X, Loader2 } from "lucide-react"
+import { verifyDocument, updateDocumentRemarks, updateDocumentFileUrl } from "@/lib/actions/documents"
+import { createClient } from "@/lib/supabase/client"
 
 const DOCUMENT_LABELS: Record<string, string> = {
   application_form: "Application Form",
@@ -107,6 +109,10 @@ function DocumentRow({
   const [remarksTimeout, setRemarksTimeout] = useState<NodeJS.Timeout | null>(
     null
   )
+  const [fileUrl, setFileUrl] = useState<string | null>(document.file_url)
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   function handleVerify(checked: boolean) {
     startTransition(async () => {
@@ -125,6 +131,71 @@ function DocumentRow({
       })
     }, 800)
     setRemarksTimeout(timeout)
+  }
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setUploading(true)
+    setUploadError(null)
+
+    try {
+      const supabase = createClient()
+      const ext = file.name.split(".").pop()
+      const path = `${applicationId}/${document.id}.${ext}`
+
+      const { error: uploadErr } = await supabase.storage
+        .from("mtop-documents")
+        .upload(path, file, { upsert: true })
+
+      if (uploadErr) {
+        setUploadError(uploadErr.message)
+        return
+      }
+
+      const { data } = supabase.storage
+        .from("mtop-documents")
+        .getPublicUrl(path)
+
+      const publicUrl = data.publicUrl
+
+      const result = await updateDocumentFileUrl(
+        document.id,
+        applicationId,
+        publicUrl
+      )
+
+      if (result.error) {
+        setUploadError(result.error)
+        return
+      }
+
+      setFileUrl(publicUrl)
+    } finally {
+      setUploading(false)
+      if (fileInputRef.current) fileInputRef.current.value = ""
+    }
+  }
+
+  async function handleRemoveFile() {
+    setUploading(true)
+    setUploadError(null)
+
+    try {
+      const result = await updateDocumentFileUrl(
+        document.id,
+        applicationId,
+        null
+      )
+      if (result.error) {
+        setUploadError(result.error)
+        return
+      }
+      setFileUrl(null)
+    } finally {
+      setUploading(false)
+    }
   }
 
   return (
@@ -157,6 +228,63 @@ function DocumentRow({
           {document.is_verified ? "Verified" : "Pending"}
         </Badge>
       </div>
+
+      {/* File attachment row */}
+      <div className="flex items-center gap-2 pl-7">
+        {fileUrl ? (
+          <>
+            <a
+              href={fileUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 text-xs text-primary underline-offset-2 hover:underline"
+            >
+              <ExternalLink className="h-3 w-3" />
+              View file
+            </a>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-5 w-5 text-muted-foreground hover:text-destructive"
+              onClick={handleRemoveFile}
+              disabled={uploading}
+              title="Remove file"
+            >
+              <X className="h-3 w-3" />
+            </Button>
+          </>
+        ) : (
+          <>
+            <input
+              ref={fileInputRef}
+              type="file"
+              className="hidden"
+              accept=".pdf,.jpg,.jpeg,.png,.webp"
+              onChange={handleFileChange}
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-6 px-2 text-xs text-muted-foreground"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+            >
+              {uploading ? (
+                <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+              ) : (
+                <Paperclip className="mr-1 h-3 w-3" />
+              )}
+              {uploading ? "Uploading…" : "Attach file"}
+            </Button>
+          </>
+        )}
+      </div>
+
+      {uploadError && (
+        <p className="text-xs text-destructive pl-7">{uploadError}</p>
+      )}
 
       {/* Remarks input — only show if user can verify */}
       {canVerify && (

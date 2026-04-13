@@ -1,8 +1,9 @@
 "use client"
 
-import { Sidebar } from "@/components/layout/sidebar"
+import { AppSidebar } from "@/components/layout/sidebar"
 import { Topbar } from "@/components/layout/topbar"
 import { ProfileProvider } from "@/lib/hooks/use-profile"
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 
 export default function DashboardLayout({
   children,
@@ -11,19 +12,13 @@ export default function DashboardLayout({
 }) {
   return (
     <ProfileProvider>
-      <div className="flex h-screen overflow-hidden">
-        {/* Sidebar */}
-        <Sidebar />
-
-        {/* Main area */}
-        <div className="flex flex-1 flex-col overflow-hidden">
-          {/* Topbar */}
+      <SidebarProvider>
+        <AppSidebar />
+        <SidebarInset>
           <Topbar />
-
-          {/* Page content */}
           <main className="flex-1 overflow-y-auto p-6">{children}</main>
-        </div>
-      </div>
+        </SidebarInset>
+      </SidebarProvider>
     </ProfileProvider>
   )
 }

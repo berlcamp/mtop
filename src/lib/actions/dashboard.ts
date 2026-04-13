@@ -2,6 +2,8 @@
 
 import { createClient } from "@/lib/supabase/server"
 import type { MtopStatus } from "@/types/database"
+import { getSystemSettings } from "@/lib/actions/settings"
+import { getPermitExpirationInfo } from "@/lib/utils/permit-expiration"
 
 async function getAuthUser() {
   const supabase = await createClient()
@@ -124,6 +126,41 @@ export async function getRecentActivity(limit = 10) {
 
     if (error) return { error: error.message, data: null }
     return { error: null, data }
+  } catch (e) {
+    return { error: (e as Error).message, data: null }
+  }
+}
+
+export async function getRenewalStats() {
+  try {
+    const { supabase } = await getAuthUser()
+    const { data: settings } = await getSystemSettings()
+
+    const { data, error } = await supabase
+      .schema("mtop")
+      .from("mtop_applications")
+      .select("granted_at")
+      .eq("status", "granted")
+      .not("granted_at", "is", null)
+
+    if (error) return { error: error.message, data: null }
+
+    let expired = 0
+    let dueForRenewal = 0
+    let active = 0
+
+    for (const app of data ?? []) {
+      const info = getPermitExpirationInfo(
+        app.granted_at,
+        settings.permit_validity_years,
+        settings.renewal_window_days
+      )
+      if (info.status === "expired") expired++
+      else if (info.status === "due_for_renewal") dueForRenewal++
+      else active++
+    }
+
+    return { error: null, data: { expired, dueForRenewal, active } }
   } catch (e) {
     return { error: (e as Error).message, data: null }
   }

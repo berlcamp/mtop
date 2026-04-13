@@ -177,6 +177,13 @@ export interface MtopNegativeList {
   created_at: string
 }
 
+export interface SystemSetting {
+  key: string
+  value: unknown
+  updated_by: string | null
+  updated_at: string
+}
+
 // Joined types for common queries
 export interface MtopApplicationWithRelations extends MtopApplication {
   documents?: MtopDocument[]
@@ -282,6 +289,11 @@ export interface MtopSchema {
         created_at?: string
       }
       Update: Partial<Omit<MtopNegativeList, "id">>
+    }
+    system_settings: {
+      Row: SystemSetting
+      Insert: Omit<SystemSetting, "updated_at"> & { updated_at?: string }
+      Update: Partial<Omit<SystemSetting, "key">>
     }
   }
   Enums: {

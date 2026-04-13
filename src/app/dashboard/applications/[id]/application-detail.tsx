@@ -37,10 +37,13 @@ import { format } from "date-fns"
 import { updateApplicationStatus } from "@/lib/actions/applications"
 import { checkNegativeList } from "@/lib/actions/documents"
 import { usePermissions } from "@/lib/hooks/use-permissions"
+import { getPermitExpirationInfo } from "@/lib/utils/permit-expiration"
+import { ExpirationBadge } from "@/components/shared/expiration-badge"
 import type { MtopStatus } from "@/types/database"
+import type { SystemSettings } from "@/lib/actions/settings"
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function ApplicationDetail({ application }: { application: any }) {
+export function ApplicationDetail({ application, settings }: { application: any; settings: SystemSettings }) {
   const router = useRouter()
   const { can } = usePermissions()
   const [error, setError] = useState<string | null>(null)
@@ -113,20 +116,72 @@ export function ApplicationDetail({ application }: { application: any }) {
         </Alert>
       )}
 
-      {/* Granted Banner */}
-      {application.status === "granted" && (
-        <Alert className="border-green-200 bg-green-50">
-          <CheckCircle2 className="h-4 w-4 text-green-600" />
-          <AlertTitle className="text-green-800">MTOP Granted</AlertTitle>
-          <AlertDescription className="text-green-700">
-            This application has been approved and the MTOP permit has been
-            granted
-            {application.granted_at &&
-              ` on ${format(new Date(application.granted_at), "MMMM d, yyyy")}`}
-            .
-          </AlertDescription>
-        </Alert>
-      )}
+      {/* Granted Banner with Expiration Info */}
+      {application.status === "granted" && (() => {
+        const expirationInfo = application.granted_at
+          ? getPermitExpirationInfo(
+              application.granted_at,
+              settings.permit_validity_years,
+              settings.renewal_window_days
+            )
+          : null
+
+        return (
+          <>
+            {expirationInfo?.status === "expired" ? (
+              <Alert className="border-red-200 bg-red-50">
+                <AlertCircle className="h-4 w-4 text-red-600" />
+                <AlertTitle className="text-red-800 flex items-center gap-2">
+                  Permit Expired
+                  <ExpirationBadge status="expired" daysRemaining={expirationInfo.daysRemaining} />
+                </AlertTitle>
+                <AlertDescription className="text-red-700">
+                  This permit was granted on{" "}
+                  {format(new Date(application.granted_at), "MMMM d, yyyy")} and
+                  expired on{" "}
+                  {format(expirationInfo.expirationDate, "MMMM d, yyyy")}.
+                  The operator needs to apply for renewal.
+                </AlertDescription>
+              </Alert>
+            ) : expirationInfo?.status === "due_for_renewal" ? (
+              <Alert className="border-amber-200 bg-amber-50">
+                <AlertTriangle className="h-4 w-4 text-amber-600" />
+                <AlertTitle className="text-amber-800 flex items-center gap-2">
+                  Due for Renewal
+                  <ExpirationBadge status="due_for_renewal" daysRemaining={expirationInfo.daysRemaining} />
+                </AlertTitle>
+                <AlertDescription className="text-amber-700">
+                  This permit was granted on{" "}
+                  {format(new Date(application.granted_at), "MMMM d, yyyy")} and
+                  expires on{" "}
+                  {format(expirationInfo.expirationDate, "MMMM d, yyyy")}.
+                  The operator should apply for renewal soon.
+                </AlertDescription>
+              </Alert>
+            ) : (
+              <Alert className="border-green-200 bg-green-50">
+                <CheckCircle2 className="h-4 w-4 text-green-600" />
+                <AlertTitle className="text-green-800 flex items-center gap-2">
+                  MTOP Granted
+                  {expirationInfo && (
+                    <ExpirationBadge status="active" daysRemaining={expirationInfo.daysRemaining} />
+                  )}
+                </AlertTitle>
+                <AlertDescription className="text-green-700">
+                  This application has been approved and the MTOP permit has been
+                  granted
+                  {application.granted_at &&
+                    ` on ${format(new Date(application.granted_at), "MMMM d, yyyy")}`}
+                  .
+                  {expirationInfo && (
+                    <> Expires on {format(expirationInfo.expirationDate, "MMMM d, yyyy")}.</>
+                  )}
+                </AlertDescription>
+              </Alert>
+            )}
+          </>
+        )
+      })()}
 
       {/* Rejected Banner */}
       {application.status === "rejected" && (
@@ -339,6 +394,19 @@ export function ApplicationDetail({ application }: { application: any }) {
                   )}
                 />
               )}
+              {application.status === "granted" && application.granted_at && (() => {
+                const info = getPermitExpirationInfo(
+                  application.granted_at,
+                  settings.permit_validity_years,
+                  settings.renewal_window_days
+                )
+                return (
+                  <SummaryRow
+                    label="Expires"
+                    value={format(info.expirationDate, "MMM d, yyyy")}
+                  />
+                )
+              })()}
               {application.assessment && (
                 <>
                   <Separator />

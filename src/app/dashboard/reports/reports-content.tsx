@@ -17,8 +17,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
-import { Separator } from "@/components/ui/separator"
-import { Download, Loader2 } from "lucide-react"
+import { Download, Loader2, AlertTriangle, TrendingUp, BarChart3, Clock } from "lucide-react"
 import { getStatusLabel } from "@/components/shared/status-badge"
 import { FEE_LABELS } from "@/lib/fees"
 import { getApplicationsForExport } from "@/lib/actions/reports"
@@ -35,18 +34,8 @@ const STATUS_ORDER: MtopStatus[] = [
 ]
 
 const MONTHS = [
-  "Jan",
-  "Feb",
-  "Mar",
-  "Apr",
-  "May",
-  "Jun",
-  "Jul",
-  "Aug",
-  "Sep",
-  "Oct",
-  "Nov",
-  "Dec",
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ]
 
 function formatCurrency(amount: number) {
@@ -84,22 +73,10 @@ export function ReportsContent({
       return
     }
 
-    // Build CSV
     const headers = [
-      "Application #",
-      "Applicant",
-      "Address",
-      "Contact",
-      "Body #",
-      "Plate #",
-      "Motor #",
-      "Chassis #",
-      "Route",
-      "Status",
-      "Fiscal Year",
-      "Due Date",
-      "Submitted",
-      "Granted",
+      "Application #", "Applicant", "Address", "Contact",
+      "Body #", "Plate #", "Motor #", "Chassis #",
+      "Route", "Status", "Fiscal Year", "Due Date", "Submitted", "Granted",
     ]
 
     const rows = result.data.map(
@@ -119,20 +96,12 @@ export function ReportsContent({
         submitted_at: string
         granted_at: string | null
       }) => [
-        app.application_number,
-        app.applicant_name,
-        app.applicant_address ?? "",
-        app.contact_number ?? "",
-        app.tricycle_body_number ?? "",
-        app.plate_number ?? "",
-        app.motor_number ?? "",
-        app.chassis_number ?? "",
-        app.route ?? "",
-        app.status,
-        app.fiscal_year,
-        app.due_date ?? "",
-        app.submitted_at,
-        app.granted_at ?? "",
+        app.application_number, app.applicant_name,
+        app.applicant_address ?? "", app.contact_number ?? "",
+        app.tricycle_body_number ?? "", app.plate_number ?? "",
+        app.motor_number ?? "", app.chassis_number ?? "",
+        app.route ?? "", app.status, app.fiscal_year,
+        app.due_date ?? "", app.submitted_at, app.granted_at ?? "",
       ]
     )
 
@@ -160,39 +129,108 @@ export function ReportsContent({
 
   return (
     <div className="space-y-6">
-      {/* Export button */}
-      <div className="flex justify-end">
+      {/* Header row with export */}
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm text-muted-foreground">
+            Fiscal Year <span className="font-semibold text-foreground">{fiscalYear}</span>
+          </p>
+        </div>
         <Button
           variant="outline"
           size="sm"
           onClick={handleExport}
           disabled={exporting}
+          className="gap-1.5"
         >
           {exporting ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
           ) : (
-            <Download className="mr-2 h-4 w-4" />
+            <Download className="h-3.5 w-3.5" />
           )}
-          Export to CSV
+          Export CSV
         </Button>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      {/* Late stats — prominent highlight cards */}
+      {lateStats && (
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {[
+            {
+              label: "Total Assessments",
+              value: lateStats.totalAssessments.toLocaleString(),
+              icon: BarChart3,
+              accent: "border-blue-500",
+              iconCls: "bg-blue-50 text-blue-600",
+              valCls: "text-blue-700",
+            },
+            {
+              label: "Late Renewals",
+              value: lateStats.lateCount.toLocaleString(),
+              icon: Clock,
+              accent: "border-amber-500",
+              iconCls: "bg-amber-50 text-amber-600",
+              valCls: "text-amber-700",
+            },
+            {
+              label: "Late Rate",
+              value: `${lateStats.latePercentage}%`,
+              icon: TrendingUp,
+              accent: "border-orange-500",
+              iconCls: "bg-orange-50 text-orange-600",
+              valCls: "text-orange-700",
+            },
+            {
+              label: "Total Penalties",
+              value: formatCurrency(lateStats.totalPenalties),
+              icon: AlertTriangle,
+              accent: "border-red-400",
+              iconCls: "bg-red-50 text-red-600",
+              valCls: "text-red-700",
+            },
+          ].map((s) => (
+            <div
+              key={s.label}
+              className={`relative overflow-hidden rounded-xl bg-card ring-1 ring-foreground/8 shadow-sm border-l-4 ${s.accent}`}
+            >
+              <div className="px-4 pt-4 pb-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70 mb-1.5 leading-none">
+                      {s.label}
+                    </p>
+                    <p className={`text-2xl font-bold tracking-tight truncate ${s.valCls}`}>
+                      {s.value}
+                    </p>
+                  </div>
+                  <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${s.iconCls}`}>
+                    <s.icon className="h-4 w-4" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="grid gap-5 lg:grid-cols-2">
         {/* Applications by Status */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Applications by Status</CardTitle>
+        <Card className="shadow-sm">
+          <CardHeader className="border-b pb-4">
+            <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+              Applications by Status
+            </CardTitle>
             <CardDescription>
-              {totalApplications} total applications in FY {fiscalYear}
+              {totalApplications.toLocaleString()} total in FY {fiscalYear}
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="pt-0">
             <Table>
               <TableHeader>
-                <TableRow>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Count</TableHead>
-                  <TableHead className="text-right">%</TableHead>
+                <TableRow className="bg-muted/30 hover:bg-muted/30 border-b border-border/50">
+                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70">Status</TableHead>
+                  <TableHead className="text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground/70">Count</TableHead>
+                  <TableHead className="text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground/70">Share</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -203,23 +241,29 @@ export function ReportsContent({
                       ? Math.round((count / totalApplications) * 100)
                       : 0
                   return (
-                    <TableRow key={status}>
-                      <TableCell>{getStatusLabel(status)}</TableCell>
-                      <TableCell className="text-right font-medium">
+                    <TableRow key={status} className="border-border/40">
+                      <TableCell className="text-sm">{getStatusLabel(status)}</TableCell>
+                      <TableCell className="text-right font-semibold tabular-nums">
                         {count}
                       </TableCell>
-                      <TableCell className="text-right text-muted-foreground">
-                        {pct}%
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <div className="hidden sm:block w-16 h-1.5 rounded-full bg-muted overflow-hidden">
+                            <div
+                              className="h-full bg-primary rounded-full"
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                          <span className="text-xs text-muted-foreground tabular-nums w-8 text-right">{pct}%</span>
+                        </div>
                       </TableCell>
                     </TableRow>
                   )
                 })}
-                <TableRow className="font-semibold">
+                <TableRow className="bg-muted/20 font-semibold border-t-2 border-border/60">
                   <TableCell>Total</TableCell>
-                  <TableCell className="text-right">
-                    {totalApplications}
-                  </TableCell>
-                  <TableCell className="text-right">100%</TableCell>
+                  <TableCell className="text-right tabular-nums">{totalApplications}</TableCell>
+                  <TableCell className="text-right text-xs text-muted-foreground">100%</TableCell>
                 </TableRow>
               </TableBody>
             </Table>
@@ -227,19 +271,21 @@ export function ReportsContent({
         </Card>
 
         {/* Revenue Summary */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Revenue Summary</CardTitle>
+        <Card className="shadow-sm">
+          <CardHeader className="border-b pb-4">
+            <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+              Revenue Summary
+            </CardTitle>
             <CardDescription>
-              Approved assessments in FY {fiscalYear}
+              Approved assessments — FY {fiscalYear}
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="pt-0">
             <Table>
               <TableHeader>
-                <TableRow>
-                  <TableHead>Fee Type</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
+                <TableRow className="bg-muted/30 hover:bg-muted/30 border-b border-border/50">
+                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70">Fee Type</TableHead>
+                  <TableHead className="text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground/70">Amount</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -248,32 +294,25 @@ export function ReportsContent({
                     .filter(([key]) => key !== "total")
                     .filter(([, amount]) => amount > 0)
                     .map(([key, amount]) => (
-                      <TableRow key={key}>
-                        <TableCell>
-                          {FEE_LABELS[key] ?? key}
-                        </TableCell>
-                        <TableCell className="text-right">
+                      <TableRow key={key} className="border-border/40">
+                        <TableCell className="text-sm">{FEE_LABELS[key] ?? key}</TableCell>
+                        <TableCell className="text-right font-mono text-sm tabular-nums">
                           {formatCurrency(amount)}
                         </TableCell>
                       </TableRow>
                     ))}
                 {revenueSummary && (
-                  <>
-                    <TableRow className="font-semibold">
-                      <TableCell>Grand Total</TableCell>
-                      <TableCell className="text-right">
-                        {formatCurrency(revenueSummary.total ?? 0)}
-                      </TableCell>
-                    </TableRow>
-                  </>
+                  <TableRow className="bg-muted/20 font-semibold border-t-2 border-border/60">
+                    <TableCell>Grand Total</TableCell>
+                    <TableCell className="text-right font-mono tabular-nums text-primary">
+                      {formatCurrency(revenueSummary.total ?? 0)}
+                    </TableCell>
+                  </TableRow>
                 )}
                 {!revenueSummary && (
                   <TableRow>
-                    <TableCell
-                      colSpan={2}
-                      className="text-center text-muted-foreground"
-                    >
-                      No data available.
+                    <TableCell colSpan={2} className="text-center py-8 text-sm text-muted-foreground">
+                      No revenue data available.
                     </TableCell>
                   </TableRow>
                 )}
@@ -282,104 +321,50 @@ export function ReportsContent({
           </CardContent>
         </Card>
 
-        {/* Monthly Renewal Trends */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Monthly Trends</CardTitle>
+        {/* Monthly Trends */}
+        <Card className="lg:col-span-2 shadow-sm">
+          <CardHeader className="border-b pb-4">
+            <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+              Monthly Trends
+            </CardTitle>
             <CardDescription>
-              Applications submitted and granted per month
+              Applications submitted vs. granted per month — FY {fiscalYear}
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="pt-0">
             <Table>
               <TableHeader>
-                <TableRow>
-                  <TableHead>Month</TableHead>
-                  <TableHead className="text-right">Submitted</TableHead>
-                  <TableHead className="text-right">Granted</TableHead>
+                <TableRow className="bg-muted/30 hover:bg-muted/30 border-b border-border/50">
+                  <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70">Month</TableHead>
+                  <TableHead className="text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground/70">Submitted</TableHead>
+                  <TableHead className="text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground/70">Granted</TableHead>
+                  <TableHead className="text-right text-xs font-semibold uppercase tracking-wider text-muted-foreground/70 hidden sm:table-cell">Grant Rate</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {monthlyTrends &&
-                  Object.entries(monthlyTrends).map(
-                    ([month, data]) => (
-                      <TableRow key={month}>
-                        <TableCell>{MONTHS[Number(month) - 1]}</TableCell>
-                        <TableCell className="text-right">
-                          {data.total}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {data.granted}
+                  Object.entries(monthlyTrends).map(([month, data]) => {
+                    const rate = data.total > 0 ? Math.round((data.granted / data.total) * 100) : 0
+                    return (
+                      <TableRow key={month} className="border-border/40">
+                        <TableCell className="font-medium text-sm">{MONTHS[Number(month) - 1]}</TableCell>
+                        <TableCell className="text-right tabular-nums">{data.total}</TableCell>
+                        <TableCell className="text-right tabular-nums text-green-700 font-medium">{data.granted}</TableCell>
+                        <TableCell className="text-right text-xs text-muted-foreground tabular-nums hidden sm:table-cell">
+                          {rate}%
                         </TableCell>
                       </TableRow>
                     )
-                  )}
+                  })}
                 {!monthlyTrends && (
                   <TableRow>
-                    <TableCell
-                      colSpan={3}
-                      className="text-center text-muted-foreground"
-                    >
-                      No data available.
+                    <TableCell colSpan={4} className="text-center py-8 text-sm text-muted-foreground">
+                      No trend data available.
                     </TableCell>
                   </TableRow>
                 )}
               </TableBody>
             </Table>
-          </CardContent>
-        </Card>
-
-        {/* Late Renewal Statistics */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Late Renewal Statistics</CardTitle>
-            <CardDescription>
-              Penalty data for FY {fiscalYear}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {lateStats ? (
-              <>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-xs text-muted-foreground">
-                      Total Assessments
-                    </p>
-                    <p className="text-2xl font-bold">
-                      {lateStats.totalAssessments}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">
-                      Late Renewals
-                    </p>
-                    <p className="text-2xl font-bold">
-                      {lateStats.lateCount}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">
-                      Late Percentage
-                    </p>
-                    <p className="text-2xl font-bold">
-                      {lateStats.latePercentage}%
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">
-                      Total Penalties
-                    </p>
-                    <p className="text-2xl font-bold">
-                      {formatCurrency(lateStats.totalPenalties)}
-                    </p>
-                  </div>
-                </div>
-              </>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                No data available.
-              </p>
-            )}
           </CardContent>
         </Card>
       </div>

@@ -3,15 +3,18 @@ import {
   getDashboardStats,
   getPipelineCounts,
   getRecentActivity,
+  getRenewalStats,
 } from "@/lib/actions/dashboard"
 import { DashboardContent } from "./dashboard-content"
 
 export default async function DashboardPage() {
-  const [statsResult, pipelineResult, activityResult] = await Promise.all([
-    getDashboardStats(),
-    getPipelineCounts(),
-    getRecentActivity(10),
-  ])
+  const [statsResult, pipelineResult, activityResult, renewalResult] =
+    await Promise.all([
+      getDashboardStats(),
+      getPipelineCounts(),
+      getRecentActivity(10),
+      getRenewalStats(),
+    ])
 
   return (
     <div className="space-y-6">
@@ -24,6 +27,7 @@ export default async function DashboardPage() {
         stats={statsResult.data}
         pipeline={pipelineResult.data}
         activity={activityResult.data}
+        renewalStats={renewalResult.data}
       />
     </div>
   )

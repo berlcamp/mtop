@@ -4,7 +4,16 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { usePermissions } from "@/lib/hooks/use-permissions"
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarGroup,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuItem,
+  SidebarSeparator,
+} from "@/components/ui/sidebar"
 import {
   Bike,
   LayoutDashboard,
@@ -13,7 +22,6 @@ import {
   BarChart3,
   Users,
   Settings,
-  Menu,
 } from "lucide-react"
 
 interface NavItem {
@@ -24,16 +32,8 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  {
-    title: "Dashboard",
-    href: "/dashboard",
-    icon: LayoutDashboard,
-  },
-  {
-    title: "Applications",
-    href: "/dashboard/applications",
-    icon: FileText,
-  },
+  { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+  { title: "Applications", href: "/dashboard/applications", icon: FileText },
   {
     title: "Negative List",
     href: "/dashboard/negative-list",
@@ -63,43 +63,46 @@ const adminItems: NavItem[] = [
   },
 ]
 
-function NavLink({
-  item,
-  onClick,
-}: {
-  item: NavItem
-  onClick?: () => void
-}) {
+function NavLink({ item }: { item: NavItem }) {
   const pathname = usePathname()
-
   const isActive =
     item.href === "/dashboard"
       ? pathname === "/dashboard"
       : pathname.startsWith(item.href)
 
   return (
-    <Link
-      href={item.href}
-      onClick={onClick}
-      className={cn(
-        "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-        isActive
-          ? "bg-white/10 text-white"
-          : "text-white/60 hover:bg-white/[0.06] hover:text-white/90"
-      )}
-    >
-      <item.icon
+    <SidebarMenuItem>
+      <Link
+        href={item.href}
         className={cn(
-          "h-4 w-4 shrink-0",
-          isActive ? "text-white" : "text-white/50"
+          "group flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-all relative",
+          isActive
+            ? "bg-white/8 text-white"
+            : "text-white/55 hover:bg-white/5 hover:text-white/90"
         )}
-      />
-      <span>{item.title}</span>
-    </Link>
+      >
+        {/* Amber active indicator */}
+        <span
+          className={cn(
+            "absolute left-0 inset-y-1.5 w-0.5 rounded-r-full transition-all",
+            isActive ? "bg-amber-400 opacity-100" : "opacity-0"
+          )}
+        />
+        <item.icon
+          className={cn(
+            "h-4 w-4 shrink-0 transition-colors",
+            isActive
+              ? "text-amber-400"
+              : "text-white/40 group-hover:text-white/70"
+          )}
+        />
+        <span>{item.title}</span>
+      </Link>
+    </SidebarMenuItem>
   )
 }
 
-function SidebarBody({ onNavClick }: { onNavClick?: () => void }) {
+export function AppSidebar() {
   const { canAny } = usePermissions()
 
   const filteredNavItems = navItems.filter(
@@ -110,71 +113,48 @@ function SidebarBody({ onNavClick }: { onNavClick?: () => void }) {
   )
 
   return (
-    <nav className="flex-1 overflow-y-auto px-3 py-3">
-      <div className="space-y-0.5">
-        {filteredNavItems.map((item) => (
-          <NavLink key={item.href} item={item} onClick={onNavClick} />
-        ))}
-      </div>
-
-      {filteredAdminItems.length > 0 && (
-        <div className="mt-6">
-          <p className="mb-1 px-3 text-[11px] font-semibold uppercase tracking-wider text-white/30">
-            Admin
-          </p>
-          <div className="space-y-0.5">
-            {filteredAdminItems.map((item) => (
-              <NavLink key={item.href} item={item} onClick={onNavClick} />
-            ))}
+    <Sidebar>
+      {/* Logo */}
+      <SidebarHeader>
+        <div className="flex h-14 items-center gap-3 border-b border-white/8 px-4">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-400/15 ring-1 ring-amber-400/30">
+            <Bike className="h-4 w-4 text-amber-400" />
+          </div>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-bold leading-tight text-white tracking-wide">
+              MTOP
+            </p>
+            <p className="truncate text-[10px] leading-tight text-white/40 tracking-wide">
+              Ozamiz City
+            </p>
           </div>
         </div>
-      )}
-    </nav>
-  )
-}
+      </SidebarHeader>
 
-function SidebarLogo() {
-  return (
-    <div className="flex h-14 shrink-0 items-center gap-3 border-b border-white/10 px-4">
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary">
-        <Bike className="h-4 w-4 text-primary-foreground" />
-      </div>
-      <div className="min-w-0">
-        <p className="truncate text-sm font-bold leading-tight text-white">
-          MTOP
-        </p>
-        <p className="truncate text-[11px] leading-tight text-white/50">
-          Tricycle Operator Permit
-        </p>
-      </div>
-    </div>
-  )
-}
+      {/* Navigation */}
+      <SidebarContent>
+        <SidebarGroup>
+          <SidebarMenu>
+            {filteredNavItems.map((item) => (
+              <NavLink key={item.href} item={item} />
+            ))}
+          </SidebarMenu>
+        </SidebarGroup>
 
-export function Sidebar() {
-  return (
-    <>
-      {/* Desktop sidebar */}
-      <aside className="hidden w-60 shrink-0 flex-col bg-[#1e1f21] md:flex">
-        <SidebarLogo />
-        <SidebarBody />
-      </aside>
-
-      {/* Mobile sidebar */}
-      <Sheet>
-        <SheetTrigger
-          render={
-            <button className="absolute left-3 top-3 z-40 inline-flex items-center justify-center rounded-lg p-2 text-muted-foreground hover:bg-accent hover:text-accent-foreground md:hidden" />
-          }
-        >
-          <Menu className="h-5 w-5" />
-          <span className="sr-only">Toggle menu</span>
-        </SheetTrigger>
-        <SheetContent side="left" className="w-60 bg-[#1e1f21] p-0 border-r-0">
-          <SidebarLogo />
-          <SidebarBody />
-        </SheetContent>
-      </Sheet>
-    </>
+        {filteredAdminItems.length > 0 && (
+          <>
+            <SidebarSeparator />
+            <SidebarGroup>
+              <SidebarGroupLabel>Admin</SidebarGroupLabel>
+              <SidebarMenu>
+                {filteredAdminItems.map((item) => (
+                  <NavLink key={item.href} item={item} />
+                ))}
+              </SidebarMenu>
+            </SidebarGroup>
+          </>
+        )}
+      </SidebarContent>
+    </Sidebar>
   )
 }

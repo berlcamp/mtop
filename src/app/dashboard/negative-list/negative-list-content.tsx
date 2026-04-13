@@ -31,6 +31,7 @@ import {
   Pencil,
   Power,
   AlertCircle,
+  AlertTriangle,
   ChevronLeft,
   ChevronRight,
   Loader2,
@@ -137,69 +138,79 @@ export function NegativeListContent() {
       {/* Search */}
       <form onSubmit={handleSearch} className="flex gap-2">
         <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <Input
             placeholder="Search by name..."
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
-            className="pl-8 w-64"
+            className="pl-8 w-60 h-8"
           />
         </div>
       </form>
 
       {/* Table */}
-      <div className="rounded-lg border">
+      <div className="rounded-xl border border-border/60 overflow-hidden bg-card shadow-sm">
         <Table>
           <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Reason</TableHead>
-              <TableHead>Added By</TableHead>
-              <TableHead>Date</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="w-[100px]">Actions</TableHead>
+            <TableRow className="bg-muted/40 hover:bg-muted/40 border-b border-border/60">
+              <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">Name</TableHead>
+              <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">Reason</TableHead>
+              <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80 hidden md:table-cell">Added By</TableHead>
+              <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80 hidden sm:table-cell">Date</TableHead>
+              <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">Status</TableHead>
+              <TableHead className="w-[80px]" />
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                  Loading...
+                <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
+                  <div className="flex items-center justify-center gap-2 text-sm">
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                    Loading…
+                  </div>
                 </TableCell>
               </TableRow>
             ) : entries.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                  No entries found.
+                <TableCell colSpan={6} className="text-center py-16 text-muted-foreground">
+                  <div className="flex flex-col items-center gap-2">
+                    <AlertTriangle className="h-7 w-7 text-muted-foreground/30" />
+                    <p className="text-sm font-medium">No entries found</p>
+                  </div>
                 </TableCell>
               </TableRow>
             ) : (
               entries.map((entry) => (
-                <TableRow key={entry.id}>
-                  <TableCell className="font-medium">
+                <TableRow key={entry.id} className="hover:bg-muted/30 transition-colors border-border/40">
+                  <TableCell className="font-semibold text-foreground">
                     {entry.applicant_name}
                   </TableCell>
-                  <TableCell className="max-w-[250px] truncate">
+                  <TableCell className="max-w-[220px] truncate text-sm text-muted-foreground">
                     {entry.reason}
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="text-sm text-muted-foreground hidden md:table-cell">
                     {entry.added_by_user?.full_name ?? "—"}
                   </TableCell>
-                  <TableCell className="text-muted-foreground">
+                  <TableCell className="text-xs text-muted-foreground hidden sm:table-cell">
                     {formatDistanceToNow(new Date(entry.created_at), {
                       addSuffix: true,
                     })}
                   </TableCell>
                   <TableCell>
-                    <Badge
-                      variant={entry.is_active ? "default" : "secondary"}
-                      className="text-xs"
+                    <span
+                      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                        entry.is_active
+                          ? "bg-green-50 text-green-800 ring-1 ring-green-200"
+                          : "bg-muted text-muted-foreground ring-1 ring-border"
+                      }`}
                     >
+                      <span className={`h-1.5 w-1.5 rounded-full ${entry.is_active ? "bg-green-500" : "bg-muted-foreground/40"}`} />
                       {entry.is_active ? "Active" : "Inactive"}
-                    </Badge>
+                    </span>
                   </TableCell>
                   <TableCell>
-                    <div className="flex gap-1">
+                    <div className="flex gap-1 justify-end">
                       <EditEntryDialog
                         entry={entry}
                         onSuccess={fetchEntries}
@@ -210,9 +221,8 @@ export function NegativeListContent() {
                         onClick={() =>
                           handleToggle(entry.id, entry.is_active)
                         }
-                        title={
-                          entry.is_active ? "Deactivate" : "Activate"
-                        }
+                        title={entry.is_active ? "Deactivate" : "Activate"}
+                        className="text-muted-foreground hover:text-foreground"
                       >
                         <Power className="h-3.5 w-3.5" />
                       </Button>
@@ -228,26 +238,32 @@ export function NegativeListContent() {
       {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
-            Showing {(page - 1) * PAGE_SIZE + 1}–
-            {Math.min(page * PAGE_SIZE, count)} of {count}
+          <p className="text-xs text-muted-foreground">
+            Showing{" "}
+            <span className="font-medium text-foreground">
+              {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, count)}
+            </span>{" "}
+            of <span className="font-medium text-foreground">{count}</span>
           </p>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-1">
             <Button
               variant="outline"
-              size="sm"
+              size="icon-sm"
               disabled={page <= 1}
               onClick={() => updateParams({ page: String(page - 1) })}
             >
-              <ChevronLeft className="h-4 w-4" />
+              <ChevronLeft className="h-3.5 w-3.5" />
             </Button>
+            <span className="px-2 text-xs text-muted-foreground tabular-nums">
+              {page} / {totalPages}
+            </span>
             <Button
               variant="outline"
-              size="sm"
+              size="icon-sm"
               disabled={page >= totalPages}
               onClick={() => updateParams({ page: String(page + 1) })}
             >
-              <ChevronRight className="h-4 w-4" />
+              <ChevronRight className="h-3.5 w-3.5" />
             </Button>
           </div>
         </div>
@@ -531,12 +547,14 @@ function AddEntryDialog({ onSuccess }: { onSuccess: () => void }) {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-4">
+          <div className="space-y-4 py-5">
             {error && (
-              <p className="text-sm text-destructive">{error}</p>
+              <div className="rounded-lg bg-destructive/10 border border-destructive/20 px-3 py-2.5">
+                <p className="text-sm text-destructive">{error}</p>
+              </div>
             )}
-            <div className="space-y-2">
-              <Label htmlFor="add-name">Applicant Name</Label>
+            <div className="space-y-1.5">
+              <Label htmlFor="add-name" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Applicant Name</Label>
               <Input
                 id="add-name"
                 value={name}
@@ -544,8 +562,8 @@ function AddEntryDialog({ onSuccess }: { onSuccess: () => void }) {
                 placeholder="Full name"
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="add-reason">Reason</Label>
+            <div className="space-y-1.5">
+              <Label htmlFor="add-reason" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Reason</Label>
               <Input
                 id="add-reason"
                 value={reason}
@@ -622,20 +640,22 @@ function EditEntryDialog({
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-4">
+          <div className="space-y-4 py-5">
             {error && (
-              <p className="text-sm text-destructive">{error}</p>
+              <div className="rounded-lg bg-destructive/10 border border-destructive/20 px-3 py-2.5">
+                <p className="text-sm text-destructive">{error}</p>
+              </div>
             )}
-            <div className="space-y-2">
-              <Label htmlFor="edit-name">Applicant Name</Label>
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-name" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Applicant Name</Label>
               <Input
                 id="edit-name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-reason">Reason</Label>
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-reason" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Reason</Label>
               <Input
                 id="edit-reason"
                 value={reason}

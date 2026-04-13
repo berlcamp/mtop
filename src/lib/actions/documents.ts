@@ -62,6 +62,29 @@ export async function updateDocumentRemarks(
   }
 }
 
+export async function updateDocumentFileUrl(
+  documentId: string,
+  applicationId: string,
+  fileUrl: string | null
+) {
+  try {
+    const { supabase } = await getAuthUser()
+
+    const { error } = await supabase
+      .schema("mtop")
+      .from("mtop_documents")
+      .update({ file_url: fileUrl })
+      .eq("id", documentId)
+
+    if (error) return { error: error.message }
+
+    revalidatePath(`/dashboard/applications/${applicationId}`)
+    return { error: null }
+  } catch (e) {
+    return { error: (e as Error).message }
+  }
+}
+
 export async function checkNegativeList(applicantName: string) {
   try {
     const { supabase } = await getAuthUser()
