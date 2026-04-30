@@ -2,9 +2,17 @@
 
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
+import Image from "next/image"
 import { useSearchParams } from "next/navigation"
 import { Suspense, useState } from "react"
 import { toast } from "sonner"
+
+const LOGIN_LOGOS = [
+  { src: "/logo1.png", alt: "" },
+  { src: "/logo2.png", alt: "" },
+  { src: "/logo3.png", alt: "" },
+  { src: "/logo4.png", alt: "" },
+] as const
 
 export default function AuthPage() {
   return (
@@ -156,6 +164,25 @@ function LoginForm() {
 
           {/* Login card */}
           <div className="rounded-xl border bg-card p-6 shadow-sm space-y-4">
+            <div
+              className="flex flex-wrap items-center justify-center gap-3 border-b border-border/60 pb-4 -mt-0.5"
+              role="presentation"
+            >
+              {LOGIN_LOGOS.map(({ src, alt }) => (
+                <div
+                  key={src}
+                  className="relative h-12 w-[4.25rem] shrink-0"
+                >
+                  <Image
+                    src={src}
+                    alt={alt}
+                    fill
+                    className="object-contain"
+                    sizes="68px"
+                  />
+                </div>
+              ))}
+            </div>
             {error === "unauthorized" && (
               <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-center">
                 <p className="text-sm font-medium text-destructive">
