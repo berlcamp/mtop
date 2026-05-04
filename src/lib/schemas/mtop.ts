@@ -1,7 +1,8 @@
 import { z } from "zod"
 
-// New application schema
-export const applicationSchema = z.object({
+// Franchise (stable owner + tricycle identity).
+// Used both standalone and as the base for new-franchise application input.
+export const franchiseSchema = z.object({
   applicant_name: z.string().min(2, "Applicant name must be at least 2 characters"),
   applicant_address: z.string().min(5, "Address must be at least 5 characters"),
   contact_number: z.string().min(7, "Contact number must be at least 7 characters"),
@@ -10,10 +11,40 @@ export const applicationSchema = z.object({
   motor_number: z.string().min(1, "Motor number is required"),
   chassis_number: z.string().min(1, "Chassis number is required"),
   route: z.string().min(1, "Route is required"),
+})
+
+export type FranchiseFormValues = z.infer<typeof franchiseSchema>
+
+// First-time application — creates a new franchise + first application together.
+export const newFranchiseApplicationSchema = franchiseSchema.extend({
   due_date: z.string().optional(),
 })
 
-export type ApplicationFormValues = z.infer<typeof applicationSchema>
+export type NewFranchiseApplicationFormValues = z.infer<
+  typeof newFranchiseApplicationSchema
+>
+
+// Renewal — only the editable fields (motor/chassis/applicant_name are locked
+// on the franchise; changing motor/chassis means a brand-new franchise).
+export const renewalApplicationSchema = z.object({
+  franchise_id: z.string().uuid(),
+  applicant_address: z
+    .string()
+    .min(5, "Address must be at least 5 characters")
+    .optional(),
+  contact_number: z
+    .string()
+    .min(7, "Contact number must be at least 7 characters")
+    .optional(),
+  tricycle_body_number: z.string().min(1).optional(),
+  plate_number: z.string().min(1).optional(),
+  route: z.string().min(1).optional(),
+  due_date: z.string().optional(),
+})
+
+export type RenewalApplicationFormValues = z.infer<
+  typeof renewalApplicationSchema
+>
 
 // Inspection schema
 export const inspectionSchema = z.object({

@@ -183,15 +183,44 @@ export async function getApplicationsForExport(fiscalYear?: number) {
       .schema("mtop")
       .from("mtop_applications")
       .select(
-        `application_number, applicant_name, applicant_address, contact_number,
-         tricycle_body_number, plate_number, motor_number, chassis_number,
-         route, status, fiscal_year, due_date, submitted_at, granted_at`
+        `id, status, fiscal_year, due_date, submitted_at, granted_at,
+         franchise:mtop_franchises(
+           mtop_number, applicant_name, applicant_address, contact_number,
+           tricycle_body_number, plate_number, motor_number, chassis_number,
+           route, granted_until
+         )`
       )
       .eq("fiscal_year", year)
-      .order("application_number")
+      .order("submitted_at")
 
     if (error) return { error: error.message, data: null }
-    return { error: null, data }
+
+    // Flatten franchise fields onto each row so the CSV export keeps the same column shape.
+    const flattened = (data ?? []).map(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (row: any) => {
+        const f = row.franchise ?? {}
+        return {
+          mtop_number: f.mtop_number ?? "",
+          applicant_name: f.applicant_name ?? "",
+          applicant_address: f.applicant_address ?? null,
+          contact_number: f.contact_number ?? null,
+          tricycle_body_number: f.tricycle_body_number ?? null,
+          plate_number: f.plate_number ?? null,
+          motor_number: f.motor_number ?? null,
+          chassis_number: f.chassis_number ?? null,
+          route: f.route ?? null,
+          status: row.status,
+          fiscal_year: row.fiscal_year,
+          due_date: row.due_date,
+          submitted_at: row.submitted_at,
+          granted_at: row.granted_at,
+          granted_until: f.granted_until ?? null,
+        }
+      }
+    )
+
+    return { error: null, data: flattened }
   } catch (e) {
     return { error: (e as Error).message, data: null }
   }

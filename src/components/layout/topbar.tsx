@@ -87,7 +87,6 @@ export function Topbar() {
 
   const displayName = profile?.full_name || user?.email || "User"
   const displayEmail = profile?.email || user?.email || ""
-  const officeName = profile?.office?.name || ""
   const initials = getInitials(displayName)
   const avatarUrl = profile?.avatar_url || user?.user_metadata?.avatar_url
 
@@ -153,11 +152,6 @@ export function Topbar() {
                     <p className="truncate text-xs text-muted-foreground leading-none">
                       {displayEmail}
                     </p>
-                    {officeName && (
-                      <p className="truncate text-xs text-muted-foreground leading-none">
-                        {officeName}
-                      </p>
-                    )}
                   </div>
                 </div>
               </DropdownMenuLabel>

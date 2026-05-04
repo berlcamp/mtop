@@ -97,7 +97,6 @@ export async function GET(request: Request) {
                 email: user.email!,
                 avatar_url:
                   user.user_metadata?.avatar_url || fullProfile.avatar_url,
-                office_id: fullProfile.office_id,
                 division_id: fullProfile.division_id,
               })
 

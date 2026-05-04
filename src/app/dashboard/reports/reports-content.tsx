@@ -74,14 +74,14 @@ export function ReportsContent({
     }
 
     const headers = [
-      "Application #", "Applicant", "Address", "Contact",
+      "MTOP #", "Applicant", "Address", "Contact",
       "Body #", "Plate #", "Motor #", "Chassis #",
-      "Route", "Status", "Fiscal Year", "Due Date", "Submitted", "Granted",
+      "Route", "Status", "Fiscal Year", "Due Date", "Submitted", "Granted", "Expires",
     ]
 
     const rows = result.data.map(
       (app: {
-        application_number: string
+        mtop_number: string
         applicant_name: string
         applicant_address: string | null
         contact_number: string | null
@@ -95,13 +95,15 @@ export function ReportsContent({
         due_date: string | null
         submitted_at: string
         granted_at: string | null
+        granted_until: string | null
       }) => [
-        app.application_number, app.applicant_name,
+        app.mtop_number, app.applicant_name,
         app.applicant_address ?? "", app.contact_number ?? "",
         app.tricycle_body_number ?? "", app.plate_number ?? "",
         app.motor_number ?? "", app.chassis_number ?? "",
         app.route ?? "", app.status, app.fiscal_year,
         app.due_date ?? "", app.submitted_at, app.granted_at ?? "",
+        app.granted_until ?? "",
       ]
     )
 

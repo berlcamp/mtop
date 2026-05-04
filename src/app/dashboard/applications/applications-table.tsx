@@ -19,8 +19,16 @@ import { ExpirationBadge } from "@/components/shared/expiration-badge"
 import { Search, ChevronLeft, ChevronRight, FileText } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
 import { createClient } from "@/lib/supabase/client"
-import { getPermitExpirationInfo } from "@/lib/utils/permit-expiration"
-import type { MtopStatus, MtopApplication } from "@/types/database"
+import { getExpirationStatus } from "@/lib/utils/permit-expiration"
+import type {
+  MtopStatus,
+  MtopApplication,
+  MtopFranchise,
+} from "@/types/database"
+
+type ApplicationRow = MtopApplication & {
+  franchise: MtopFranchise | null
+}
 
 const STATUS_TABS: { value: string; label: string }[] = [
   { value: "all", label: "All" },
@@ -47,7 +55,7 @@ export function ApplicationsTable({
   const search = urlSearchParams.get("search") || ""
   const page = parseInt(urlSearchParams.get("page") || "1", 10)
 
-  const [applications, setApplications] = useState<MtopApplication[]>([])
+  const [applications, setApplications] = useState<ApplicationRow[]>([])
   const [count, setCount] = useState(0)
   const [loading, setLoading] = useState(true)
   const [searchInput, setSearchInput] = useState(search)
@@ -81,20 +89,38 @@ export function ApplicationsTable({
   const fetchApplications = useCallback(async () => {
     setLoading(true)
 
+    // If a search query is set, look up matching franchise IDs first.
+    let franchiseIds: string[] | undefined
+    if (search) {
+      const { data: matches } = await supabase
+        .schema("mtop")
+        .from("mtop_franchises")
+        .select("id")
+        .or(
+          `mtop_number.ilike.%${search}%,applicant_name.ilike.%${search}%`
+        )
+      const ids = (matches ?? []).map((m: { id: string }) => m.id)
+      if (ids.length === 0) {
+        setApplications([])
+        setCount(0)
+        setLoading(false)
+        return
+      }
+      franchiseIds = ids
+    }
+
     let query = supabase
       .schema("mtop")
       .from("mtop_applications")
-      .select("*", { count: "exact" })
+      .select("*, franchise:mtop_franchises(*)", { count: "exact" })
       .order("created_at", { ascending: false })
 
     if (status !== "all") {
       query = query.eq("status", status as MtopStatus)
     }
 
-    if (search) {
-      query = query.or(
-        `applicant_name.ilike.%${search}%,application_number.ilike.%${search}%`
-      )
+    if (franchiseIds) {
+      query = query.in("franchise_id", franchiseIds)
     }
 
     const from = (page - 1) * PAGE_SIZE
@@ -103,7 +129,7 @@ export function ApplicationsTable({
 
     const { data, count: totalCount } = await query
 
-    setApplications((data as MtopApplication[]) ?? [])
+    setApplications((data as ApplicationRow[]) ?? [])
     setCount(totalCount ?? 0)
     setLoading(false)
   }, [supabase, status, search, page])
@@ -132,10 +158,10 @@ export function ApplicationsTable({
   // Client-side expiration filtering (when linked from dashboard renewal cards)
   const filteredApplications = expiration
     ? applications.filter((app) => {
-        if (app.status !== "granted" || !app.granted_at) return false
-        const info = getPermitExpirationInfo(
-          app.granted_at,
-          settings.permit_validity_years,
+        if (app.status !== "granted" || !app.franchise?.granted_until)
+          return false
+        const info = getExpirationStatus(
+          app.franchise.granted_until,
           settings.renewal_window_days
         )
         return info.status === expiration
@@ -168,7 +194,7 @@ export function ApplicationsTable({
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
             <Input
-              placeholder="Search applicant or app #..."
+              placeholder="Search applicant or MTOP #..."
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               className="pl-8 w-60 h-8"
@@ -182,7 +208,7 @@ export function ApplicationsTable({
         <Table>
           <TableHeader>
             <TableRow className="bg-muted/40 hover:bg-muted/40 border-b border-border/60">
-              <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">Application #</TableHead>
+              <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">MTOP #</TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">Applicant</TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80 hidden md:table-cell">Body #</TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80 hidden lg:table-cell">Route</TableHead>
@@ -216,10 +242,9 @@ export function ApplicationsTable({
             ) : (
               filteredApplications.map((app) => {
                 const expirationInfo =
-                  app.status === "granted" && app.granted_at
-                    ? getPermitExpirationInfo(
-                        app.granted_at,
-                        settings.permit_validity_years,
+                  app.status === "granted" && app.franchise?.granted_until
+                    ? getExpirationStatus(
+                        app.franchise.granted_until,
                         settings.renewal_window_days
                       )
                     : null
@@ -234,17 +259,17 @@ export function ApplicationsTable({
                         href={`/dashboard/applications/${app.id}`}
                         className="font-mono text-xs font-semibold text-primary hover:underline underline-offset-2"
                       >
-                        {app.application_number}
+                        {app.franchise?.mtop_number ?? "—"}
                       </Link>
                     </TableCell>
                     <TableCell className="font-medium text-foreground">
-                      {app.applicant_name}
+                      {app.franchise?.applicant_name ?? "—"}
                     </TableCell>
                     <TableCell className="font-mono text-sm text-muted-foreground hidden md:table-cell">
-                      {app.tricycle_body_number || "—"}
+                      {app.franchise?.tricycle_body_number || "—"}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate hidden lg:table-cell">
-                      {app.route || "—"}
+                      {app.franchise?.route || "—"}
                     </TableCell>
                     <TableCell>
                       <StatusBadge status={app.status} />

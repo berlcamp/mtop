@@ -37,7 +37,7 @@ import { format } from "date-fns"
 import { updateApplicationStatus } from "@/lib/actions/applications"
 import { checkNegativeList } from "@/lib/actions/documents"
 import { usePermissions } from "@/lib/hooks/use-permissions"
-import { getPermitExpirationInfo } from "@/lib/utils/permit-expiration"
+import { getExpirationStatus } from "@/lib/utils/permit-expiration"
 import { ExpirationBadge } from "@/components/shared/expiration-badge"
 import type { MtopStatus } from "@/types/database"
 import type { SystemSettings } from "@/lib/actions/settings"
@@ -53,16 +53,19 @@ export function ApplicationDetail({ application, settings }: { application: any;
     { id: string; applicant_name: string; reason: string }[]
   >([])
 
+  const franchise = application.franchise
+
   // Check negative list on mount
   useEffect(() => {
-    if (application.applicant_name) {
-      checkNegativeList(application.applicant_name).then((result) => {
+    const name = franchise?.applicant_name
+    if (name) {
+      checkNegativeList(name).then((result) => {
         if (!result.error && result.data) {
           setNegativeListMatches(result.data)
         }
       })
     }
-  }, [application.applicant_name])
+  }, [franchise?.applicant_name])
 
   const isOnNegativeList = negativeListMatches.length > 0
 
@@ -104,8 +107,8 @@ export function ApplicationDetail({ application, settings }: { application: any;
   return (
     <div className="space-y-6">
       <PageHeader
-        title={application.application_number}
-        subtitle={`${application.applicant_name} — ${application.route ?? "No route"}`}
+        title={franchise?.mtop_number ?? "Pending MTOP Number"}
+        subtitle={`${franchise?.applicant_name ?? ""} — ${franchise?.route ?? "No route"}`}
         actions={<StatusBadge status={application.status} />}
       />
 
@@ -118,10 +121,9 @@ export function ApplicationDetail({ application, settings }: { application: any;
 
       {/* Granted Banner with Expiration Info */}
       {application.status === "granted" && (() => {
-        const expirationInfo = application.granted_at
-          ? getPermitExpirationInfo(
-              application.granted_at,
-              settings.permit_validity_years,
+        const expirationInfo = franchise?.granted_until
+          ? getExpirationStatus(
+              franchise.granted_until,
               settings.renewal_window_days
             )
           : null
@@ -224,15 +226,15 @@ export function ApplicationDetail({ application, settings }: { application: any;
             </CardHeader>
             <CardContent>
               <dl className="grid gap-4 sm:grid-cols-2">
-                <InfoItem label="Full Name" value={application.applicant_name} />
+                <InfoItem label="Full Name" value={franchise?.applicant_name} />
                 <InfoItem
                   label="Contact Number"
-                  value={application.contact_number}
+                  value={franchise?.contact_number}
                   icon={<Phone className="h-3.5 w-3.5" />}
                 />
                 <InfoItem
                   label="Address"
-                  value={application.applicant_address}
+                  value={franchise?.applicant_address}
                   className="sm:col-span-2"
                 />
               </dl>
@@ -251,27 +253,27 @@ export function ApplicationDetail({ application, settings }: { application: any;
               <dl className="grid gap-4 sm:grid-cols-2">
                 <InfoItem
                   label="Body Number"
-                  value={application.tricycle_body_number}
+                  value={franchise?.tricycle_body_number}
                   mono
                 />
                 <InfoItem
                   label="Plate Number"
-                  value={application.plate_number}
+                  value={franchise?.plate_number}
                   mono
                 />
                 <InfoItem
                   label="Motor Number"
-                  value={application.motor_number}
+                  value={franchise?.motor_number}
                   mono
                 />
                 <InfoItem
                   label="Chassis Number"
-                  value={application.chassis_number}
+                  value={franchise?.chassis_number}
                   mono
                 />
                 <InfoItem
                   label="Route"
-                  value={application.route}
+                  value={franchise?.route}
                   icon={<MapPin className="h-3.5 w-3.5" />}
                 />
                 <InfoItem
@@ -367,11 +369,14 @@ export function ApplicationDetail({ application, settings }: { application: any;
             </CardHeader>
             <CardContent className="space-y-3">
               <SummaryRow
-                label="Application #"
-                value={application.application_number}
+                label="MTOP #"
+                value={franchise?.mtop_number ?? "—"}
                 mono
               />
-              <SummaryRow label="Applicant" value={application.applicant_name} />
+              <SummaryRow
+                label="Applicant"
+                value={franchise?.applicant_name ?? "—"}
+              />
               <SummaryRow
                 label="Submitted"
                 value={format(
@@ -394,19 +399,12 @@ export function ApplicationDetail({ application, settings }: { application: any;
                   )}
                 />
               )}
-              {application.status === "granted" && application.granted_at && (() => {
-                const info = getPermitExpirationInfo(
-                  application.granted_at,
-                  settings.permit_validity_years,
-                  settings.renewal_window_days
-                )
-                return (
-                  <SummaryRow
-                    label="Expires"
-                    value={format(info.expirationDate, "MMM d, yyyy")}
-                  />
-                )
-              })()}
+              {application.status === "granted" && franchise?.granted_until && (
+                <SummaryRow
+                  label="Expires"
+                  value={format(new Date(franchise.granted_until), "MMM d, yyyy")}
+                />
+              )}
               {application.assessment && (
                 <>
                   <Separator />

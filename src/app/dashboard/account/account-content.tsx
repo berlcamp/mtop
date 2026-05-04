@@ -28,8 +28,6 @@ export function AccountContent() {
 
   const displayName = profile?.full_name || user?.email || "User"
   const displayEmail = profile?.email || user?.email || ""
-  const officeName = profile?.office?.name || ""
-  const officeCode = profile?.office?.code || ""
   const initials = getInitials(displayName)
   const avatarUrl = profile?.avatar_url || user?.user_metadata?.avatar_url
 
@@ -63,20 +61,6 @@ export function AccountContent() {
           </div>
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
-          {officeName && (
-            <div>
-              <p className="text-muted-foreground">Office</p>
-              <p className="font-medium">
-                {officeName}
-                {officeCode ? (
-                  <span className="text-muted-foreground font-normal">
-                    {" "}
-                    ({officeCode})
-                  </span>
-                ) : null}
-              </p>
-            </div>
-          )}
           <div>
             <p className="text-muted-foreground">User ID</p>
             <p className="font-mono text-xs break-all text-foreground/90">

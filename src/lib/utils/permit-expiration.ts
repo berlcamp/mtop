@@ -1,4 +1,4 @@
-import { differenceInDays, addYears, isPast } from "date-fns"
+import { differenceInDays, isPast } from "date-fns"
 
 export type PermitExpirationStatus = "active" | "due_for_renewal" | "expired"
 
@@ -8,13 +8,12 @@ export interface PermitExpirationInfo {
   daysRemaining: number
 }
 
-export function getPermitExpirationInfo(
-  grantedAt: string | Date,
-  validityYears: number,
+// Derives expiration status from a franchise's stored granted_until date.
+export function getExpirationStatus(
+  grantedUntil: string | Date,
   renewalWindowDays: number
 ): PermitExpirationInfo {
-  const granted = new Date(grantedAt)
-  const expirationDate = addYears(granted, validityYears)
+  const expirationDate = new Date(grantedUntil)
   const daysRemaining = differenceInDays(expirationDate, new Date())
 
   let status: PermitExpirationStatus

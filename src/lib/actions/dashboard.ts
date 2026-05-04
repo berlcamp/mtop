@@ -1,9 +1,8 @@
 "use server"
 
 import { createClient } from "@/lib/supabase/server"
-import type { MtopStatus } from "@/types/database"
 import { getSystemSettings } from "@/lib/actions/settings"
-import { getPermitExpirationInfo } from "@/lib/utils/permit-expiration"
+import type { MtopStatus } from "@/types/database"
 
 async function getAuthUser() {
   const supabase = await createClient()
@@ -119,7 +118,7 @@ export async function getRecentActivity(limit = 10) {
       .schema("mtop")
       .from("approval_logs")
       .select(
-        "*, actor:user_profiles!actor_id(id, full_name), application:mtop_applications!application_id(application_number, applicant_name)"
+        "*, actor:user_profiles!actor_id(id, full_name), application:mtop_applications!application_id(id, franchise:mtop_franchises(mtop_number, applicant_name))"
       )
       .order("created_at", { ascending: false })
       .limit(limit)
@@ -138,25 +137,26 @@ export async function getRenewalStats() {
 
     const { data, error } = await supabase
       .schema("mtop")
-      .from("mtop_applications")
-      .select("granted_at")
-      .eq("status", "granted")
-      .not("granted_at", "is", null)
+      .from("mtop_franchises")
+      .select("granted_until")
+      .not("granted_until", "is", null)
 
     if (error) return { error: error.message, data: null }
+
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const dueWindowMs = settings.renewal_window_days * 24 * 60 * 60 * 1000
 
     let expired = 0
     let dueForRenewal = 0
     let active = 0
 
-    for (const app of data ?? []) {
-      const info = getPermitExpirationInfo(
-        app.granted_at,
-        settings.permit_validity_years,
-        settings.renewal_window_days
-      )
-      if (info.status === "expired") expired++
-      else if (info.status === "due_for_renewal") dueForRenewal++
+    for (const row of data ?? []) {
+      const expiry = new Date(row.granted_until)
+      expiry.setHours(0, 0, 0, 0)
+      const diff = expiry.getTime() - today.getTime()
+      if (diff < 0) expired++
+      else if (diff <= dueWindowMs) dueForRenewal++
       else active++
     }
 

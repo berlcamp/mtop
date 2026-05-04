@@ -16,12 +16,6 @@ interface UserProfile {
   full_name: string
   email: string
   avatar_url: string | null
-  office_id: string | null
-  office?: {
-    id: string
-    name: string
-    code: string
-  } | null
 }
 
 interface ProfileContextType {
@@ -51,16 +45,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
       const { data } = await supabase
         .schema("mtop")
         .from("user_profiles")
-        .select(
-          `
-          id,
-          full_name,
-          email,
-          avatar_url,
-          office_id,
-          office:offices (id, name, code)
-        `
-        )
+        .select("id, full_name, email, avatar_url")
         .eq("id", user.id)
         .maybeSingle()
 

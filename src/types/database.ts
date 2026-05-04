@@ -26,17 +26,8 @@ export type ApprovalAction = "approved" | "rejected" | "returned" | "forwarded"
 
 export type InspectionResult = "passed" | "failed"
 
-export interface Office {
-  id: string
-  name: string
-  code: string
-  division_id: string | null
-  created_at: string
-}
-
 export interface UserProfile {
   id: string
-  office_id: string | null
   division_id: string | null
   full_name: string
   email: string
@@ -69,17 +60,26 @@ export interface RolePermission {
   permission_id: string
 }
 
-export interface MtopApplication {
+export interface MtopFranchise {
   id: string
-  application_number: string
+  mtop_number: string | null
   applicant_name: string
   applicant_address: string | null
   contact_number: string | null
   tricycle_body_number: string | null
   plate_number: string | null
-  motor_number: string | null
-  chassis_number: string | null
+  motor_number: string
+  chassis_number: string
   route: string | null
+  granted_until: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface MtopApplication {
+  id: string
+  franchise_id: string
   status: MtopStatus
   fiscal_year: number
   due_date: string | null
@@ -186,6 +186,7 @@ export interface SystemSetting {
 
 // Joined types for common queries
 export interface MtopApplicationWithRelations extends MtopApplication {
+  franchise?: MtopFranchise | null
   documents?: MtopDocument[]
   inspection?: MtopInspection | null
   assessment?: MtopAssessment | null
@@ -194,22 +195,19 @@ export interface MtopApplicationWithRelations extends MtopApplication {
   creator?: Pick<UserProfile, "id" | "full_name" | "email"> | null
 }
 
-export interface UserProfileWithOffice extends UserProfile {
-  office?: Office | null
+export interface FranchiseSearchResult extends MtopFranchise {
+  // Latest application's status (if any) — used by the renewal-eligibility check.
+  latest_status?: MtopStatus | null
+  has_active_application?: boolean
 }
 
-export interface UserProfileWithRoles extends UserProfileWithOffice {
+export interface UserProfileWithRoles extends UserProfile {
   roles?: (UserRole & { role: Role })[]
 }
 
 // Database schema type for Supabase client typing
 export interface MtopSchema {
   Tables: {
-    offices: {
-      Row: Office
-      Insert: Omit<Office, "id" | "created_at"> & { id?: string; created_at?: string }
-      Update: Partial<Omit<Office, "id">>
-    }
     user_profiles: {
       Row: UserProfile
       Insert: Omit<UserProfile, "created_at"> & { created_at?: string }
@@ -234,6 +232,15 @@ export interface MtopSchema {
       Row: RolePermission
       Insert: RolePermission
       Update: Partial<RolePermission>
+    }
+    mtop_franchises: {
+      Row: MtopFranchise
+      Insert: Omit<MtopFranchise, "id" | "created_at" | "updated_at"> & {
+        id?: string
+        created_at?: string
+        updated_at?: string
+      }
+      Update: Partial<Omit<MtopFranchise, "id">>
     }
     mtop_applications: {
       Row: MtopApplication

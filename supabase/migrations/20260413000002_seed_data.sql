@@ -1,17 +1,13 @@
 -- 2.5 Seed Data
--- Default offices, roles, permissions, and role-permission mappings
+-- Default roles, permissions, and role-permission mappings
 
--- Offices
-INSERT INTO mtop.offices (name, code) VALUES
-  ('City Administrator''s Office', 'CADM'),
-  ('City Treasurer''s Office', 'CTO');
-
--- Roles
+-- Roles — task-aligned. A user can hold multiple roles.
 INSERT INTO mtop.roles (name, code, description) VALUES
-  ('CADM Staff', 'cadm_staff', 'City Administrator''s Office staff - handles verification and inspection'),
-  ('CADM Head', 'cadm_head', 'City Administrator''s Office head - approves and grants MTOP'),
-  ('CTO Staff', 'cto_staff', 'City Treasurer''s Office staff - handles assessment and payment'),
-  ('CTO Head', 'cto_head', 'City Treasurer''s Office head - approves assessments'),
+  ('Verification Officer', 'verification_officer', 'Intakes new applications and verifies documents'),
+  ('Inspection Officer', 'inspection_officer', 'Conducts physical tricycle inspection'),
+  ('Assessment Officer', 'assessment_officer', 'Creates and approves fee assessments'),
+  ('Cashier', 'cashier', 'Records payments against approved assessments'),
+  ('Approver', 'approver', 'Reviews completed applications and grants the MTOP'),
   ('Admin', 'admin', 'System administrator with full access');
 
 -- Permissions
@@ -31,36 +27,32 @@ INSERT INTO mtop.permissions (code, description) VALUES
 
 -- Role-Permission Mappings
 
--- CADM Staff permissions
 INSERT INTO mtop.role_permissions (role_id, permission_id)
-SELECT r.id, p.id
-FROM mtop.roles r, mtop.permissions p
-WHERE r.code = 'cadm_staff'
-  AND p.code IN ('application.create', 'application.view', 'application.verify', 'inspection.conduct', 'negative_list.manage');
+SELECT r.id, p.id FROM mtop.roles r, mtop.permissions p
+WHERE r.code = 'verification_officer'
+  AND p.code IN ('application.create', 'application.view', 'application.verify', 'negative_list.manage');
 
--- CADM Head permissions (all CADM Staff + approve + grant)
 INSERT INTO mtop.role_permissions (role_id, permission_id)
-SELECT r.id, p.id
-FROM mtop.roles r, mtop.permissions p
-WHERE r.code = 'cadm_head'
-  AND p.code IN ('application.create', 'application.view', 'application.verify', 'inspection.conduct', 'negative_list.manage', 'application.approve', 'application.grant');
+SELECT r.id, p.id FROM mtop.roles r, mtop.permissions p
+WHERE r.code = 'inspection_officer'
+  AND p.code IN ('application.view', 'inspection.conduct');
 
--- CTO Staff permissions
 INSERT INTO mtop.role_permissions (role_id, permission_id)
-SELECT r.id, p.id
-FROM mtop.roles r, mtop.permissions p
-WHERE r.code = 'cto_staff'
-  AND p.code IN ('application.view', 'assessment.create', 'payment.record');
+SELECT r.id, p.id FROM mtop.roles r, mtop.permissions p
+WHERE r.code = 'assessment_officer'
+  AND p.code IN ('application.view', 'assessment.create', 'assessment.approve');
 
--- CTO Head permissions (all CTO Staff + approve assessment)
 INSERT INTO mtop.role_permissions (role_id, permission_id)
-SELECT r.id, p.id
-FROM mtop.roles r, mtop.permissions p
-WHERE r.code = 'cto_head'
-  AND p.code IN ('application.view', 'assessment.create', 'payment.record', 'assessment.approve');
+SELECT r.id, p.id FROM mtop.roles r, mtop.permissions p
+WHERE r.code = 'cashier'
+  AND p.code IN ('application.view', 'payment.record');
 
--- Admin permissions (all)
 INSERT INTO mtop.role_permissions (role_id, permission_id)
-SELECT r.id, p.id
-FROM mtop.roles r, mtop.permissions p
+SELECT r.id, p.id FROM mtop.roles r, mtop.permissions p
+WHERE r.code = 'approver'
+  AND p.code IN ('application.view', 'application.approve', 'application.grant', 'reports.view');
+
+-- Admin: all permissions
+INSERT INTO mtop.role_permissions (role_id, permission_id)
+SELECT r.id, p.id FROM mtop.roles r, mtop.permissions p
 WHERE r.code = 'admin';

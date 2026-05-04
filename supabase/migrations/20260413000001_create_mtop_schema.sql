@@ -7,18 +7,8 @@ CREATE SCHEMA IF NOT EXISTS mtop;
 
 -- 2.2 Core Tables
 
--- Organization
-CREATE TABLE mtop.offices (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name TEXT NOT NULL,
-  code TEXT NOT NULL UNIQUE,
-  division_id UUID,
-  created_at TIMESTAMPTZ DEFAULT now()
-);
-
 CREATE TABLE mtop.user_profiles (
   id UUID PRIMARY KEY REFERENCES auth.users(id),
-  office_id UUID REFERENCES mtop.offices(id),
   division_id UUID,
   full_name TEXT NOT NULL,
   email TEXT NOT NULL,
@@ -68,18 +58,84 @@ CREATE TYPE mtop.mtop_document_type AS ENUM (
   'police_clearance', 'drivers_license', 'affidavit_no_franchise'
 );
 
--- Main applications table
-CREATE TABLE mtop.mtop_applications (
+-- MTOP number sequence — assigned only on first grant
+CREATE SEQUENCE mtop.mtop_number_seq START 1;
+
+CREATE OR REPLACE FUNCTION mtop.format_mtop_number(n BIGINT)
+RETURNS TEXT
+LANGUAGE sql
+IMMUTABLE
+AS $$
+  SELECT 'MTOP-' || lpad(n::text, 5, '0')
+$$;
+
+-- Atomically assign the next MTOP number (if missing) and advance granted_until.
+-- Called from server actions when an application transitions to 'granted'.
+CREATE OR REPLACE FUNCTION mtop.grant_franchise(
+  p_franchise_id UUID,
+  p_granted_at TIMESTAMPTZ,
+  p_validity_years INTEGER
+)
+RETURNS TEXT
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = mtop, public
+AS $$
+DECLARE
+  v_number TEXT;
+  v_until DATE;
+BEGIN
+  v_until := (p_granted_at::date + (p_validity_years || ' years')::interval)::date;
+
+  SELECT mtop_number INTO v_number
+  FROM mtop.mtop_franchises
+  WHERE id = p_franchise_id
+  FOR UPDATE;
+
+  IF v_number IS NULL THEN
+    v_number := mtop.format_mtop_number(nextval('mtop.mtop_number_seq'));
+    UPDATE mtop.mtop_franchises
+    SET mtop_number = v_number,
+        granted_until = v_until,
+        updated_at = now()
+    WHERE id = p_franchise_id;
+  ELSE
+    UPDATE mtop.mtop_franchises
+    SET granted_until = v_until,
+        updated_at = now()
+    WHERE id = p_franchise_id;
+  END IF;
+
+  RETURN v_number;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION mtop.grant_franchise(UUID, TIMESTAMPTZ, INTEGER)
+  TO authenticated, service_role;
+
+-- Franchise — stable identity that survives renewals.
+-- One row per (owner + tricycle). The MTOP number lives here and stays the same forever.
+CREATE TABLE mtop.mtop_franchises (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  application_number TEXT NOT NULL UNIQUE,
+  mtop_number TEXT UNIQUE,
   applicant_name TEXT NOT NULL,
   applicant_address TEXT,
   contact_number TEXT,
   tricycle_body_number TEXT,
   plate_number TEXT,
-  motor_number TEXT,
-  chassis_number TEXT,
+  motor_number TEXT NOT NULL,
+  chassis_number TEXT NOT NULL,
   route TEXT,
+  granted_until DATE,
+  created_by UUID REFERENCES mtop.user_profiles(id),
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Per-cycle renewal applications — one row per fiscal year per franchise.
+CREATE TABLE mtop.mtop_applications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  franchise_id UUID NOT NULL REFERENCES mtop.mtop_franchises(id) ON DELETE CASCADE,
   status mtop.mtop_status DEFAULT 'for_verification',
   fiscal_year INTEGER DEFAULT EXTRACT(YEAR FROM now()),
   due_date DATE,
@@ -88,7 +144,8 @@ CREATE TABLE mtop.mtop_applications (
   division_id UUID,
   created_by UUID REFERENCES mtop.user_profiles(id),
   created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ DEFAULT now()
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE (franchise_id, fiscal_year)
 );
 
 -- Documents checklist
@@ -187,12 +244,12 @@ CREATE TABLE mtop.mtop_negative_list (
 -- 2.4 RLS Policies
 
 -- Enable RLS on all tables
-ALTER TABLE mtop.offices ENABLE ROW LEVEL SECURITY;
 ALTER TABLE mtop.user_profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE mtop.roles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE mtop.permissions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE mtop.user_roles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE mtop.role_permissions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE mtop.mtop_franchises ENABLE ROW LEVEL SECURITY;
 ALTER TABLE mtop.mtop_applications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE mtop.mtop_documents ENABLE ROW LEVEL SECURITY;
 ALTER TABLE mtop.mtop_inspections ENABLE ROW LEVEL SECURITY;
@@ -202,11 +259,6 @@ ALTER TABLE mtop.approval_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE mtop.mtop_negative_list ENABLE ROW LEVEL SECURITY;
 
 -- Lookup tables: readable by all authenticated users
-CREATE POLICY "Authenticated users can read offices"
-  ON mtop.offices FOR SELECT
-  TO authenticated
-  USING (true);
-
 CREATE POLICY "Authenticated users can read roles"
   ON mtop.roles FOR SELECT
   TO authenticated
@@ -241,6 +293,22 @@ CREATE POLICY "Users can insert own profile"
 -- User roles: readable by all authenticated
 CREATE POLICY "Authenticated users can read user_roles"
   ON mtop.user_roles FOR SELECT
+  TO authenticated
+  USING (true);
+
+-- Franchises: readable, insertable, updatable by authenticated users
+CREATE POLICY "Authenticated users can read franchises"
+  ON mtop.mtop_franchises FOR SELECT
+  TO authenticated
+  USING (true);
+
+CREATE POLICY "Authenticated users can insert franchises"
+  ON mtop.mtop_franchises FOR INSERT
+  TO authenticated
+  WITH CHECK (true);
+
+CREATE POLICY "Authenticated users can update franchises"
+  ON mtop.mtop_franchises FOR UPDATE
   TO authenticated
   USING (true);
 
@@ -342,10 +410,14 @@ CREATE POLICY "Authenticated users can update negative_list"
   USING (true);
 
 -- Indexes for performance
+CREATE INDEX idx_franchises_mtop_number ON mtop.mtop_franchises(mtop_number);
+CREATE INDEX idx_franchises_applicant_name ON mtop.mtop_franchises(applicant_name);
+CREATE INDEX idx_franchises_motor_number ON mtop.mtop_franchises(motor_number);
+CREATE INDEX idx_franchises_chassis_number ON mtop.mtop_franchises(chassis_number);
+CREATE INDEX idx_franchises_granted_until ON mtop.mtop_franchises(granted_until);
+CREATE INDEX idx_applications_franchise_id ON mtop.mtop_applications(franchise_id);
 CREATE INDEX idx_applications_status ON mtop.mtop_applications(status);
 CREATE INDEX idx_applications_fiscal_year ON mtop.mtop_applications(fiscal_year);
-CREATE INDEX idx_applications_applicant_name ON mtop.mtop_applications(applicant_name);
-CREATE INDEX idx_applications_application_number ON mtop.mtop_applications(application_number);
 CREATE INDEX idx_applications_division_id ON mtop.mtop_applications(division_id);
 CREATE INDEX idx_documents_application_id ON mtop.mtop_documents(application_id);
 CREATE INDEX idx_inspections_application_id ON mtop.mtop_inspections(application_id);

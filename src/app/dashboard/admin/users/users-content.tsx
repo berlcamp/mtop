@@ -42,31 +42,21 @@ interface Role {
   code: string
 }
 
-interface Office {
-  id: string
-  name: string
-  code: string
-}
-
 interface UserEntry {
   id: string
   full_name: string
   email: string
   avatar_url: string | null
-  office_id: string | null
   created_at: string
-  office?: { id: string; name: string; code: string } | null
   user_roles?: { id: string; role_id: string; role: Role }[]
 }
 
 export function UsersContent({
   users,
   roles,
-  offices,
 }: {
   users: UserEntry[]
   roles: Role[]
-  offices: Office[]
 }) {
   const router = useRouter()
   const [error, setError] = useState<string | null>(null)
@@ -92,7 +82,7 @@ export function UsersContent({
       )}
 
       <div className="flex justify-end">
-        <AddUserDialog roles={roles} offices={offices} />
+        <AddUserDialog roles={roles} />
       </div>
 
       <div className="rounded-xl border border-border/60 overflow-hidden bg-card shadow-sm">
@@ -101,7 +91,6 @@ export function UsersContent({
             <TableRow className="bg-muted/40 hover:bg-muted/40 border-b border-border/60">
               <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">Name</TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">Email</TableHead>
-              <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80 hidden md:table-cell">Office</TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">Roles</TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80 hidden sm:table-cell">Added</TableHead>
               <TableHead className="w-[80px]" />
@@ -110,7 +99,7 @@ export function UsersContent({
           <TableBody>
             {users.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-16 text-muted-foreground">
+                <TableCell colSpan={5} className="text-center py-16 text-muted-foreground">
                   <div className="flex flex-col items-center gap-2">
                     <Users className="h-8 w-8 text-muted-foreground/30" />
                     <p className="text-sm font-medium">No users yet</p>
@@ -128,15 +117,6 @@ export function UsersContent({
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
                     {user.email}
-                  </TableCell>
-                  <TableCell className="hidden md:table-cell">
-                    {user.office ? (
-                      <Badge variant="secondary" className="text-xs font-medium">
-                        {user.office.code}
-                      </Badge>
-                    ) : (
-                      <span className="text-muted-foreground/50 text-xs">—</span>
-                    )}
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-wrap gap-1">
@@ -163,11 +143,7 @@ export function UsersContent({
                   </TableCell>
                   <TableCell>
                     <div className="flex gap-1 justify-end">
-                      <EditUserDialog
-                        user={user}
-                        roles={roles}
-                        offices={offices}
-                      />
+                      <EditUserDialog user={user} roles={roles} />
                       <Button
                         variant="ghost"
                         size="icon-xs"
@@ -218,18 +194,11 @@ function FieldGroup({
   )
 }
 
-function AddUserDialog({
-  roles,
-  offices,
-}: {
-  roles: Role[]
-  offices: Office[]
-}) {
+function AddUserDialog({ roles }: { roles: Role[] }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [email, setEmail] = useState("")
   const [fullName, setFullName] = useState("")
-  const [officeId, setOfficeId] = useState("")
   const [selectedRoles, setSelectedRoles] = useState<string[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -253,7 +222,6 @@ function AddUserDialog({
     const result = await addUser({
       email: email.trim().toLowerCase(),
       full_name: fullName.trim(),
-      office_id: officeId || null,
       role_ids: selectedRoles,
     })
 
@@ -265,7 +233,6 @@ function AddUserDialog({
 
     setEmail("")
     setFullName("")
-    setOfficeId("")
     setSelectedRoles([])
     setOpen(false)
     setSubmitting(false)
@@ -313,22 +280,6 @@ function AddUserDialog({
               />
             </FieldGroup>
 
-            <FieldGroup label="Office" htmlFor="add-office">
-              <select
-                id="add-office"
-                value={officeId}
-                onChange={(e) => setOfficeId(e.target.value)}
-                className="flex h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-              >
-                <option value="">No office</option>
-                {offices.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.name} ({o.code})
-                  </option>
-                ))}
-              </select>
-            </FieldGroup>
-
             <FieldGroup label="Roles">
               <div className="space-y-2.5 rounded-lg border border-border/60 bg-muted/30 p-3">
                 {roles.map((role) => (
@@ -367,19 +318,10 @@ function AddUserDialog({
   )
 }
 
-function EditUserDialog({
-  user,
-  roles,
-  offices,
-}: {
-  user: UserEntry
-  roles: Role[]
-  offices: Office[]
-}) {
+function EditUserDialog({ user, roles }: { user: UserEntry; roles: Role[] }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [fullName, setFullName] = useState(user.full_name)
-  const [officeId, setOfficeId] = useState(user.office_id ?? "")
   const [selectedRoles, setSelectedRoles] = useState<string[]>(
     user.user_roles?.map((ur) => ur.role_id) ?? []
   )
@@ -404,7 +346,6 @@ function EditUserDialog({
 
     const result = await updateUser(user.id, {
       full_name: fullName.trim(),
-      office_id: officeId || null,
       role_ids: selectedRoles,
     })
 
@@ -444,22 +385,6 @@ function EditUserDialog({
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
               />
-            </FieldGroup>
-
-            <FieldGroup label="Office" htmlFor="edit-office">
-              <select
-                id="edit-office"
-                value={officeId}
-                onChange={(e) => setOfficeId(e.target.value)}
-                className="flex h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-              >
-                <option value="">No office</option>
-                {offices.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.name} ({o.code})
-                  </option>
-                ))}
-              </select>
             </FieldGroup>
 
             <FieldGroup label="Roles">

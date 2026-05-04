@@ -41,8 +41,11 @@ interface ActivityEntry {
   created_at: string
   actor?: { id: string; full_name: string } | null
   application?: {
-    application_number: string
-    applicant_name: string
+    id: string
+    franchise?: {
+      mtop_number: string | null
+      applicant_name: string
+    } | null
   } | null
 }
 
@@ -282,13 +285,13 @@ export function DashboardContent({
                       {entry.application && (
                         <>
                           <Link
-                            href={`/dashboard/applications?search=${entry.application.application_number}`}
+                            href={`/dashboard/applications/${entry.application.id}`}
                             className="font-mono text-xs text-primary hover:underline font-medium"
                           >
-                            {entry.application.application_number}
+                            {entry.application.franchise?.mtop_number ?? "—"}
                           </Link>{" "}
                           <span className="text-muted-foreground">
-                            ({entry.application.applicant_name})
+                            ({entry.application.franchise?.applicant_name ?? "—"})
                           </span>
                         </>
                       )}
