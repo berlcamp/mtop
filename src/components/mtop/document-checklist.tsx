@@ -229,10 +229,13 @@ function DocumentRow({
         </Badge>
       </div>
 
-      {/* File attachment row */}
-      <div className="flex items-center gap-2 pl-7">
-        {fileUrl ? (
-          <>
+      {/* File attachment row.
+          Add/remove gated on canVerify — only verification-stage editors
+          can attach or replace files. Everyone with view access can still
+          open an already-attached file. */}
+      {(fileUrl || canVerify) && (
+        <div className="flex items-center gap-2 pl-7">
+          {fileUrl && (
             <a
               href={fileUrl}
               target="_blank"
@@ -242,6 +245,8 @@ function DocumentRow({
               <ExternalLink className="h-3 w-3" />
               View file
             </a>
+          )}
+          {canVerify && fileUrl && (
             <Button
               type="button"
               variant="ghost"
@@ -253,36 +258,37 @@ function DocumentRow({
             >
               <X className="h-3 w-3" />
             </Button>
-          </>
-        ) : (
-          <>
-            <input
-              ref={fileInputRef}
-              type="file"
-              className="hidden"
-              accept=".pdf,.jpg,.jpeg,.png,.webp"
-              onChange={handleFileChange}
-            />
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-6 px-2 text-xs text-muted-foreground"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-            >
-              {uploading ? (
-                <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-              ) : (
-                <Paperclip className="mr-1 h-3 w-3" />
-              )}
-              {uploading ? "Uploading…" : "Attach file"}
-            </Button>
-          </>
-        )}
-      </div>
+          )}
+          {canVerify && !fileUrl && (
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                className="hidden"
+                accept=".pdf,.jpg,.jpeg,.png,.webp"
+                onChange={handleFileChange}
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 text-xs text-muted-foreground"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+              >
+                {uploading ? (
+                  <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                ) : (
+                  <Paperclip className="mr-1 h-3 w-3" />
+                )}
+                {uploading ? "Uploading…" : "Attach file"}
+              </Button>
+            </>
+          )}
+        </div>
+      )}
 
-      {uploadError && (
+      {canVerify && uploadError && (
         <p className="text-xs text-destructive pl-7">{uploadError}</p>
       )}
 
