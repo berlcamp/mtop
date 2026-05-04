@@ -31,7 +31,18 @@ export async function updateSession(request: NextRequest) {
 
   const {
     data: { user },
+    error,
   } = await supabase.auth.getUser()
+
+  // Clear stale auth cookies when refresh token is invalid/missing.
+  // Without this, every request re-throws the same AuthApiError until cookies expire.
+  if (error?.code === "refresh_token_not_found" || error?.code === "refresh_token_already_used") {
+    for (const cookie of request.cookies.getAll()) {
+      if (cookie.name.startsWith("sb-")) {
+        supabaseResponse.cookies.delete(cookie.name)
+      }
+    }
+  }
 
   // Redirect unauthenticated users to login page
   if (
