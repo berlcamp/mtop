@@ -568,32 +568,21 @@ function NewFranchiseForm({
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Route &amp; Schedule</CardTitle>
-          <CardDescription>
-            Assigned route and renewal due date
-          </CardDescription>
+          <CardTitle className="text-lg">Route</CardTitle>
+          <CardDescription>Assigned route</CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
-          <div className="grid gap-5 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="route">Route</Label>
-              <Input
-                id="route"
-                placeholder="e.g., Poblacion - Barangay San Antonio"
-                {...register("route")}
-                aria-invalid={!!errors.route}
-              />
-              {errors.route && (
-                <p className="text-xs text-destructive">
-                  {errors.route.message}
-                </p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="due_date">Due Date (Optional)</Label>
-              <Input id="due_date" type="date" {...register("due_date")} />
-            </div>
+          <div className="space-y-2">
+            <Label htmlFor="route">Route</Label>
+            <Input
+              id="route"
+              placeholder="e.g., Poblacion - Barangay San Antonio"
+              {...register("route")}
+              aria-invalid={!!errors.route}
+            />
+            {errors.route && (
+              <p className="text-xs text-destructive">{errors.route.message}</p>
+            )}
           </div>
         </CardContent>
       </Card>
