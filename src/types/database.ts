@@ -71,7 +71,14 @@ export interface MtopFranchise {
   motor_number: string
   chassis_number: string
   route: string | null
+  make: string | null
+  day_off: string | null
   granted_until: string | null
+  owner_photo_url: string | null
+  driver_photo_url: string | null
+  driver_name: string | null
+  driver_license_number: string | null
+  driver_address: string | null
   created_by: string | null
   created_at: string
   updated_at: string
@@ -235,10 +242,29 @@ export interface MtopSchema {
     }
     mtop_franchises: {
       Row: MtopFranchise
-      Insert: Omit<MtopFranchise, "id" | "created_at" | "updated_at"> & {
+      Insert: Omit<
+        MtopFranchise,
+        | "id"
+        | "created_at"
+        | "updated_at"
+        | "owner_photo_url"
+        | "driver_photo_url"
+        | "driver_name"
+        | "driver_license_number"
+        | "driver_address"
+        | "make"
+        | "day_off"
+      > & {
         id?: string
         created_at?: string
         updated_at?: string
+        owner_photo_url?: string | null
+        driver_photo_url?: string | null
+        driver_name?: string | null
+        driver_license_number?: string | null
+        driver_address?: string | null
+        make?: string | null
+        day_off?: string | null
       }
       Update: Partial<Omit<MtopFranchise, "id">>
     }

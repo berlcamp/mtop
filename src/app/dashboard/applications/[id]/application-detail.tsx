@@ -17,6 +17,7 @@ import { StatusBadge } from "@/components/shared/status-badge"
 import { ApprovalStepper } from "@/components/shared/approval-stepper"
 import { TimelineLog } from "@/components/shared/timeline-log"
 import { DocumentChecklist } from "@/components/mtop/document-checklist"
+import { FranchisePhotosCard } from "@/components/mtop/franchise-photos-card"
 import { InspectionChecklist } from "@/components/mtop/inspection-checklist"
 import { FeeAssessmentForm } from "@/components/mtop/fee-assessment-form"
 import { PaymentForm } from "@/components/mtop/payment-form"
@@ -32,6 +33,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   Loader2,
+  Printer,
 } from "lucide-react"
 import { format } from "date-fns"
 import { updateApplicationStatus } from "@/lib/actions/applications"
@@ -109,7 +111,23 @@ export function ApplicationDetail({ application, settings }: { application: any;
       <PageHeader
         title={franchise?.mtop_number ?? "Pending MTOP Number"}
         subtitle={`${franchise?.applicant_name ?? ""} — ${franchise?.route ?? "No route"}`}
-        actions={<StatusBadge status={application.status} />}
+        actions={
+          <div className="flex items-center gap-2">
+            {application.status === "granted" && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  window.open(`/print/mtop/${application.id}`, "_blank")
+                }
+              >
+                <Printer className="h-4 w-4" />
+                Print Franchise Card
+              </Button>
+            )}
+            <StatusBadge status={application.status} />
+          </div>
+        }
       />
 
       {error && (
@@ -240,6 +258,24 @@ export function ApplicationDetail({ application, settings }: { application: any;
               </dl>
             </CardContent>
           </Card>
+
+          {/* Photos & Driver Details — franchise-level, feeds the Franchise Card */}
+          {franchise && (
+            <FranchisePhotosCard
+              franchiseId={franchise.id}
+              applicationId={application.id}
+              ownerPhotoUrl={franchise.owner_photo_url ?? null}
+              driverPhotoUrl={franchise.driver_photo_url ?? null}
+              driverName={franchise.driver_name ?? null}
+              driverLicenseNumber={franchise.driver_license_number ?? null}
+              driverAddress={franchise.driver_address ?? null}
+              make={franchise.make ?? null}
+              dayOff={franchise.day_off ?? null}
+              canEdit={
+                can("application.verify") && application.status !== "granted"
+              }
+            />
+          )}
 
           {/* Tricycle Details */}
           <Card>

@@ -9,7 +9,7 @@ export default async function AdminSettingsPage() {
     <div className="space-y-6">
       <PageHeader
         title="System Settings"
-        subtitle="Configure permit validity and renewal monitoring"
+        subtitle="Configure permit validity, renewal monitoring, and office contact details"
       />
 
       <SettingsContent settings={settings} />

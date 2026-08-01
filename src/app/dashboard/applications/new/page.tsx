@@ -404,6 +404,8 @@ function NewFranchiseForm({
       motor_number: "",
       chassis_number: "",
       route: "",
+      make: "",
+      day_off: "",
       due_date: "",
     },
   })
@@ -561,6 +563,24 @@ function NewFranchiseForm({
                   {errors.chassis_number.message}
                 </p>
               )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="make">Make</Label>
+              <Input
+                id="make"
+                placeholder="e.g., Kawasaki"
+                {...register("make")}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="day_off">Day Off</Label>
+              <Input
+                id="day_off"
+                placeholder="e.g., Every Tuesday and Sunday"
+                {...register("day_off")}
+              />
             </div>
           </div>
         </CardContent>

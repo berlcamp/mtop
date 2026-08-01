@@ -16,11 +16,13 @@ async function getAuthUser() {
 export interface SystemSettings {
   permit_validity_years: number
   renewal_window_days: number
+  ctms_contact_number: string
 }
 
 const DEFAULTS: SystemSettings = {
   permit_validity_years: 3,
   renewal_window_days: 90,
+  ctms_contact_number: "",
 }
 
 export async function getSystemSettings(): Promise<{
@@ -34,7 +36,11 @@ export async function getSystemSettings(): Promise<{
       .schema("mtop")
       .from("system_settings")
       .select("key, value")
-      .in("key", ["permit_validity_years", "renewal_window_days"])
+      .in("key", [
+        "permit_validity_years",
+        "renewal_window_days",
+        "ctms_contact_number",
+      ])
 
     if (error) return { error: error.message, data: DEFAULTS }
 
@@ -45,6 +51,10 @@ export async function getSystemSettings(): Promise<{
       }
       if (row.key === "renewal_window_days") {
         settings.renewal_window_days = Number(row.value) || DEFAULTS.renewal_window_days
+      }
+      if (row.key === "ctms_contact_number") {
+        settings.ctms_contact_number =
+          typeof row.value === "string" ? row.value : DEFAULTS.ctms_contact_number
       }
     }
 
@@ -68,6 +78,12 @@ export async function updateSystemSettings(input: SystemSettingsFormValues) {
       {
         key: "renewal_window_days",
         value: input.renewal_window_days,
+        updated_by: user.id,
+        updated_at: new Date().toISOString(),
+      },
+      {
+        key: "ctms_contact_number",
+        value: input.ctms_contact_number?.trim() ?? "",
         updated_by: user.id,
         updated_at: new Date().toISOString(),
       },

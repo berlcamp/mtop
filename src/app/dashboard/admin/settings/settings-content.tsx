@@ -13,8 +13,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { CheckCircle2, Loader2, CalendarClock, Bell } from "lucide-react"
+import { Loader2, CalendarClock, Bell, Phone } from "lucide-react"
 import {
   systemSettingsSchema,
   type SystemSettingsFormValues,
@@ -37,6 +36,7 @@ export function SettingsContent({ settings }: { settings: SystemSettings }) {
     defaultValues: {
       permit_validity_years: settings.permit_validity_years,
       renewal_window_days: settings.renewal_window_days,
+      ctms_contact_number: settings.ctms_contact_number,
     },
   })
 
@@ -92,8 +92,9 @@ export function SettingsContent({ settings }: { settings: SystemSettings }) {
             Renewal Window
           </CardTitle>
           <CardDescription>
-            How many days before expiration a permit is flagged as "due for
-            renewal". This helps staff identify permits that need attention soon.
+            How many days before expiration a permit is flagged as &ldquo;due
+            for renewal&rdquo;. This helps staff identify permits that need
+            attention soon.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -110,6 +111,37 @@ export function SettingsContent({ settings }: { settings: SystemSettings }) {
             {errors.renewal_window_days && (
               <p className="text-xs text-destructive">
                 {errors.renewal_window_days.message}
+              </p>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Phone className="h-4 w-4" />
+            CTMS Contact Number
+          </CardTitle>
+          <CardDescription>
+            Contact number for the City Traffic Management System office. Shown
+            to staff and printed on issued permits and franchise cards.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            <Label htmlFor="ctms_contact_number">Contact number</Label>
+            <Input
+              id="ctms_contact_number"
+              type="tel"
+              inputMode="tel"
+              placeholder="(088) 521-1234"
+              className="w-64"
+              {...register("ctms_contact_number")}
+            />
+            {errors.ctms_contact_number && (
+              <p className="text-xs text-destructive">
+                {errors.ctms_contact_number.message}
               </p>
             )}
           </div>

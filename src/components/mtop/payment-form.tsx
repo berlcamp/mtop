@@ -17,7 +17,11 @@ import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Banknote, AlertCircle, Loader2 } from "lucide-react"
 import { useProfile } from "@/lib/hooks/use-profile"
-import { paymentSchema, type PaymentFormValues } from "@/lib/schemas/mtop"
+import {
+  paymentSchema,
+  type PaymentFormInput,
+  type PaymentFormValues,
+} from "@/lib/schemas/mtop"
 import { recordPayment } from "@/lib/actions/payments"
 import type { MtopStatus } from "@/types/database"
 
@@ -84,11 +88,12 @@ function PaymentFormInner({
 
   const today = new Date().toISOString().split("T")[0]
 
+  // Fields hold raw input; the resolver hands onSubmit the coerced values.
   const {
     register,
     handleSubmit,
     formState: { errors, isSubmitting },
-  } = useForm<PaymentFormValues>({
+  } = useForm<PaymentFormInput, unknown, PaymentFormValues>({
     resolver: zodResolver(paymentSchema),
     defaultValues: {
       or_number: "",

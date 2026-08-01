@@ -11,6 +11,9 @@ export const franchiseSchema = z.object({
   motor_number: z.string().min(1, "Motor number is required"),
   chassis_number: z.string().min(1, "Chassis number is required"),
   route: z.string().min(1, "Route is required"),
+  // Printed on the Franchise Card; optional so existing franchises stay valid.
+  make: z.string().trim().max(60).optional(),
+  day_off: z.string().trim().max(60).optional(),
 })
 
 export type FranchiseFormValues = z.infer<typeof franchiseSchema>
@@ -39,6 +42,8 @@ export const renewalApplicationSchema = z.object({
   tricycle_body_number: z.string().min(1).optional(),
   plate_number: z.string().min(1).optional(),
   route: z.string().min(1).optional(),
+  make: z.string().trim().max(60).optional(),
+  day_off: z.string().trim().max(60).optional(),
   due_date: z.string().optional(),
 })
 
@@ -86,11 +91,14 @@ export type AssessmentFormValues = z.infer<typeof assessmentSchema>
 // Payment schema
 export const paymentSchema = z.object({
   or_number: z.string().min(1, "OR number is required"),
-  amount_paid: z.number().positive("Amount must be greater than 0"),
+  // Coerced because <input type="number"> hands react-hook-form a string.
+  amount_paid: z.coerce.number().positive("Amount must be greater than 0"),
   payment_date: z.string().optional(),
   payment_method: z.enum(["cash", "check"]),
 })
 
+// Input = what the form fields hold pre-coercion; Values = what the action gets.
+export type PaymentFormInput = z.input<typeof paymentSchema>
 export type PaymentFormValues = z.infer<typeof paymentSchema>
 
 // Status transition remarks
@@ -106,6 +114,12 @@ export const returnActionSchema = z.object({
 export const systemSettingsSchema = z.object({
   permit_validity_years: z.coerce.number().int().min(1).max(10),
   renewal_window_days: z.coerce.number().int().min(1).max(365),
+  // Free-form: local numbers are written many ways ((088) 521-1234, 0917-…).
+  ctms_contact_number: z
+    .string()
+    .trim()
+    .max(50, "Contact number is too long")
+    .default(""),
 })
 
 export type SystemSettingsFormValues = z.infer<typeof systemSettingsSchema>

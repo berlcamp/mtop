@@ -109,6 +109,8 @@ export async function createNewFranchiseApplication(
         motor_number: input.motor_number,
         chassis_number: input.chassis_number,
         route: input.route,
+        make: input.make?.trim() || null,
+        day_off: input.day_off?.trim() || null,
         created_by: user.id,
       })
       .select("id")
