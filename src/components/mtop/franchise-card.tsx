@@ -28,6 +28,9 @@ const LINE_HEIGHT = {
   playfair: 1.33,
 } as const
 
+/** The page colour, lifted out of the artwork SVG so the watermark can sit on it. */
+const CREAM = "#FFF5E5"
+
 const INDIGO = "#2D338B"
 const RED = "#CE1126"
 const WATERMARK = "#FFE1C7"
@@ -198,11 +201,41 @@ export function FranchiseCard({ data }: { data: FranchiseCardData }) {
         width: `${PAGE_W}pt`,
         height: `${PAGE_H}pt`,
         overflow: "hidden",
-        backgroundImage: "url(/mtop-card-art.svg)",
-        backgroundSize: `${PAGE_W}pt ${PAGE_H}pt`,
-        backgroundRepeat: "no-repeat",
+        backgroundColor: CREAM,
       }}
     >
+      {/* Layer 0 — the year watermark sits between the page colour and the
+          artwork, so the divider rules cross it unbroken, as in the original.
+          Painting it above the artwork would chop the lower rule into dashes. */}
+      <div style={{ position: "absolute", inset: 0, zIndex: 0 }}>
+        <C
+          cx={306}
+          y={71.5}
+          size={129}
+          font="oswald"
+          weight={700}
+          color={WATERMARK}
+        >
+          {data.year}
+        </C>
+      </div>
+
+      {/* Layer 1 — the original artwork, page background removed */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src="/mtop-card-art.svg"
+        alt=""
+        style={{
+          position: "absolute",
+          inset: 0,
+          width: `${PAGE_W}pt`,
+          height: `${PAGE_H}pt`,
+          zIndex: 1,
+        }}
+      />
+
+      {/* Layer 2 — permit data */}
+      <div style={{ position: "absolute", inset: 0, zIndex: 2 }}>
       {/* Photos sit above the artwork's placeholder illustrations */}
       <Photo url={data.ownerPhotoUrl} y={275.0} />
       <Photo url={data.driverPhotoUrl} y={436.3} />
@@ -219,18 +252,6 @@ export function FranchiseCard({ data }: { data: FranchiseCardData }) {
       </C>
       <C cx={302.2} y={49.6} size={13.3} font="playfair" weight={700}>
         OFFICE OF THE CITY MAYOR
-      </C>
-
-      {/* Year watermark, behind the numbers */}
-      <C
-        cx={306}
-        y={71.5}
-        size={129}
-        font="oswald"
-        weight={700}
-        color={WATERMARK}
-      >
-        {data.year}
       </C>
 
       <C cx={309.8} y={93.8} size={28.1} font="oswald" weight={700} color={INDIGO}>
@@ -412,6 +433,7 @@ export function FranchiseCard({ data }: { data: FranchiseCardData }) {
       <C cx={442.3} y={899.2} size={19.6} italic>
         Ozamiz City
       </C>
+      </div>
     </div>
   )
 }
