@@ -181,13 +181,15 @@ export function ApplicationsTable({
             updateParams({ status: value === "all" ? "" : (value as string), page: "" })
           }
         >
-          <TabsList variant="line">
-            {STATUS_TABS.map((tab) => (
-              <TabsTrigger key={tab.value} value={tab.value}>
-                {tab.label}
-              </TabsTrigger>
-            ))}
-          </TabsList>
+          <div className="max-w-full overflow-x-auto pb-1">
+            <TabsList variant="line" className="w-max max-w-none">
+              {STATUS_TABS.map((tab) => (
+                <TabsTrigger key={tab.value} value={tab.value}>
+                  {tab.label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </div>
         </Tabs>
 
         <form onSubmit={handleSearch} className="flex gap-2">
@@ -227,7 +229,7 @@ export function ApplicationsTable({
                   </div>
                 </TableCell>
               </TableRow>
-            ) : applications.length === 0 ? (
+            ) : filteredApplications.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={7} className="text-center py-16 text-muted-foreground">
                   <div className="flex flex-col items-center gap-2">
