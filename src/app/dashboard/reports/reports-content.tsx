@@ -132,7 +132,7 @@ export function ReportsContent({
   return (
     <div className="space-y-6">
       {/* Header row with export */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-sm text-muted-foreground">
             Fiscal Year <span className="font-semibold text-foreground">{fiscalYear}</span>

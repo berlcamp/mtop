@@ -165,14 +165,16 @@ function FranchiseLookup({
             {results.map((f) => (
               <li
                 key={f.id}
-                className="flex items-center justify-between gap-3 p-3"
+                className="flex items-start justify-between gap-3 p-3"
               >
-                <div className="min-w-0">
-                  <div className="flex items-baseline gap-2">
-                    <span className="font-mono text-sm font-semibold">
+                <div className="min-w-0 flex-1">
+                  <div className="flex min-w-0 items-baseline gap-2">
+                    <span className="shrink-0 font-mono text-sm font-semibold">
                       {f.mtop_number ?? "— (not yet granted)"}
                     </span>
-                    <span className="font-medium">{f.applicant_name}</span>
+                    <span className="min-w-0 truncate font-medium">
+                      {f.applicant_name}
+                    </span>
                   </div>
                   <div className="text-xs text-muted-foreground mt-0.5">
                     Plate {f.plate_number ?? "—"} · Body{" "}

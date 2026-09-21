@@ -112,7 +112,7 @@ export function ApplicationDetail({ application, settings }: { application: any;
         title={franchise?.mtop_number ?? "Pending MTOP Number"}
         subtitle={`${franchise?.applicant_name ?? ""} — ${franchise?.route ?? "No route"}`}
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {application.status === "granted" && (
               <Button
                 variant="outline"
