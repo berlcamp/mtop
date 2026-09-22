@@ -43,19 +43,15 @@ async function hasPermission(
 }
 
 /**
- * The client-side gate is UX only — re-check here that the caller may edit the
- * franchise's photos/driver details and that the permit isn't already issued.
+ * The franchise really does belong to this application, and the permit has not
+ * been issued yet. Shared by every edit path below; the permission each one
+ * needs is checked by its own wrapper.
  */
-async function assertCanEditFranchise(
+async function assertApplicationEditable(
   supabase: SupabaseServerClient,
-  userId: string,
   applicationId: string,
   franchiseId: string
 ) {
-  if (!(await hasPermission(supabase, userId, "application.verify"))) {
-    return "You do not have permission to edit franchise photos."
-  }
-
   const { data: application, error } = await supabase
     .schema("mtop")
     .from("mtop_applications")
@@ -72,6 +68,44 @@ async function assertCanEditFranchise(
   }
 
   return null
+}
+
+/**
+ * The client-side gate is UX only — re-check here that the caller may edit the
+ * franchise's photos/driver details and that the permit isn't already issued.
+ */
+async function assertCanEditFranchise(
+  supabase: SupabaseServerClient,
+  userId: string,
+  applicationId: string,
+  franchiseId: string
+) {
+  if (!(await hasPermission(supabase, userId, "application.verify"))) {
+    return "You do not have permission to edit franchise photos."
+  }
+
+  return assertApplicationEditable(supabase, applicationId, franchiseId)
+}
+
+/**
+ * The unit's identity — motor, chassis, plate and body numbers — is what a
+ * change-of-unit transaction exists to alter, with the old values kept in
+ * mtop.franchise_unit_history. Editing it in place is therefore an
+ * administrator's correction of a mis-keyed record, not a normal operation,
+ * and is refused to everyone else. The audit trigger on mtop_franchises logs
+ * the before and after either way, so a correction is never silent.
+ */
+async function assertAdminCanEditUnit(
+  supabase: SupabaseServerClient,
+  userId: string,
+  applicationId: string,
+  franchiseId: string
+) {
+  if (!(await hasPermission(supabase, userId, "admin.manage"))) {
+    return "Only an administrator can correct the tricycle details. A change of unit should be filed as its own transaction."
+  }
+
+  return assertApplicationEditable(supabase, applicationId, franchiseId)
 }
 
 export async function updateFranchisePhoto(
@@ -200,5 +234,75 @@ export async function getFranchise(id: string) {
     }
   } catch (e) {
     return { error: (e as Error).message, data: null }
+  }
+}
+
+/**
+ * Correct the unit's details on the franchise record.
+ *
+ * Administrator-only, and only until the permit is granted — the same line the
+ * rest of the application detail view draws. Motor and chassis numbers are
+ * NOT NULL on the table, so a blank one is refused here with something
+ * readable rather than a constraint violation.
+ */
+export async function updateFranchiseUnitDetails(
+  franchiseId: string,
+  applicationId: string,
+  details: {
+    tricycle_body_number: string | null
+    plate_number: string | null
+    motor_number: string
+    chassis_number: string
+    route: string | null
+    association_id: string | null
+  }
+) {
+  try {
+    const { supabase, user } = await getAuthUser()
+
+    const denied = await assertAdminCanEditUnit(
+      supabase,
+      user.id,
+      applicationId,
+      franchiseId
+    )
+    if (denied) return { error: denied }
+
+    const motor = details.motor_number?.trim()
+    const chassis = details.chassis_number?.trim()
+    if (!motor) return { error: "Motor number is required." }
+    if (!chassis) return { error: "Chassis number is required." }
+
+    const { error } = await supabase
+      .schema("mtop")
+      .from("mtop_franchises")
+      .update({
+        tricycle_body_number: details.tricycle_body_number?.trim() || null,
+        plate_number: details.plate_number?.trim() || null,
+        motor_number: motor,
+        chassis_number: chassis,
+        route: details.route?.trim() || null,
+        association_id: details.association_id || null,
+      })
+      .eq("id", franchiseId)
+
+    if (error) {
+      // A partial unique index guards body and plate numbers across active
+      // franchises; say which record is in the way rather than surfacing a
+      // raw duplicate-key error.
+      if (error.code === "23505") {
+        return {
+          error:
+            "Another active franchise already uses one of these numbers. Check the body and plate numbers.",
+        }
+      }
+      return { error: error.message }
+    }
+
+    revalidatePath(`/dashboard/applications/${applicationId}`)
+    revalidatePath(`/dashboard/franchises/${franchiseId}`)
+    return { error: null }
+  } catch (e) {
+    return { error: (e as Error).message }
   }
 }

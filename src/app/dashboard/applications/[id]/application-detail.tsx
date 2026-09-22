@@ -11,7 +11,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { StatusBadge } from "@/components/shared/status-badge"
@@ -20,16 +19,14 @@ import { TimelineLog } from "@/components/shared/timeline-log"
 import { HistoryTimeline } from "@/components/shared/history-timeline"
 import { RequirementChecklist } from "@/components/mtop/requirement-checklist"
 import { FranchisePhotosCard } from "@/components/mtop/franchise-photos-card"
+import { TricycleDetailsCard } from "@/components/mtop/tricycle-details-card"
 import { InspectionChecklist } from "@/components/mtop/inspection-checklist"
 import { FeeAssessmentForm } from "@/components/mtop/fee-assessment-form"
 import { PaymentForm } from "@/components/mtop/payment-form"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import {
   User,
-  Bike,
-  MapPin,
   Phone,
-  Calendar,
   Hash,
   AlertCircle,
   AlertTriangle,
@@ -37,7 +34,6 @@ import {
   Loader2,
   Printer,
   ArrowRight,
-  Building2,
   History,
   RotateCcw,
 } from "lucide-react"
@@ -48,6 +44,7 @@ import { usePermissions } from "@/lib/hooks/use-permissions"
 import { getExpirationStatus } from "@/lib/utils/permit-expiration"
 import { cn } from "@/lib/utils"
 import { isBlocking } from "@/lib/requirements"
+import { InfoItem } from "@/components/shared/info-item"
 import {
   reopenTargetStage,
   stageName,
@@ -392,56 +389,18 @@ export function ApplicationDetail({
             />
           )}
 
-          {/* Tricycle Details */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Bike className="h-4 w-4" />
-                Tricycle Details
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <dl className="grid gap-4 sm:grid-cols-2">
-                <InfoItem
-                  label="Body Number"
-                  value={franchise?.tricycle_body_number}
-                  mono
-                />
-                <InfoItem
-                  label="Plate Number"
-                  value={franchise?.plate_number}
-                  mono
-                />
-                <InfoItem
-                  label="Motor Number"
-                  value={franchise?.motor_number}
-                  mono
-                />
-                <InfoItem
-                  label="Chassis Number"
-                  value={franchise?.chassis_number}
-                  mono
-                />
-                <InfoItem
-                  label="Route"
-                  value={franchise?.route}
-                  icon={<MapPin className="h-3.5 w-3.5" />}
-                />
-                <InfoItem
-                  label="Association"
-                  // No association is a real state (strikers), not missing
-                  // data, so say so rather than showing a bare dash.
-                  value={franchise?.association?.name ?? "No association (striker)"}
-                  icon={<Building2 className="h-3.5 w-3.5" />}
-                />
-                <InfoItem
-                  label="Fiscal Year"
-                  value={application.fiscal_year?.toString()}
-                  icon={<Calendar className="h-3.5 w-3.5" />}
-                />
-              </dl>
-            </CardContent>
-          </Card>
+          {/* Tricycle Details — read-only except to an administrator, who may
+              correct a mis-keyed record until the permit is granted. A unit
+              that genuinely changed goes through a change-of-unit transaction,
+              which keeps the old numbers as history. */}
+          {franchise && (
+            <TricycleDetailsCard
+              franchise={franchise}
+              applicationId={application.id}
+              fiscalYear={application.fiscal_year?.toString()}
+              canEdit={adminEdit}
+            />
+          )}
 
           {/* Requirement checklist for this transaction.
               Editable at any stage before the permit is settled, not only at
@@ -735,31 +694,6 @@ function PendingChangeCard({
   )
 }
 
-function InfoItem({
-  label,
-  value,
-  icon,
-  mono,
-  className,
-}: {
-  label: string
-  value?: string | null
-  icon?: React.ReactNode
-  mono?: boolean
-  className?: string
-}) {
-  return (
-    <div className={className}>
-      <dt className="text-xs text-muted-foreground mb-1">{label}</dt>
-      <dd className="flex items-center gap-1.5 text-sm">
-        {icon}
-        <span className={mono ? "font-mono" : undefined}>
-          {value || "—"}
-        </span>
-      </dd>
-    </div>
-  )
-}
 
 function SummaryRow({
   label,
