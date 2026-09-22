@@ -125,6 +125,20 @@ Every change to a franchise is logged by a database trigger, not by the server a
 
 It renders via `HistoryTimeline` (`src/components/shared/history-timeline.tsx`) in two places: the full trail under the History tab of `/dashboard/franchises/[id]`, and the last six entries on the application detail page.
 
+### Addresses
+
+An operator's address is stored three ways at once (`20260413000020_barangay_purok.sql`):
+
+- `mtop_franchises.barangay` — a foreign key into `mtop.barangays`, so addresses can be counted per barangay
+- `mtop_franchises.purok` — free text; puroks have no citywide register
+- `mtop_franchises.applicant_address` — the two composed into one readable line
+
+The composed line is what the permit, search, reports and the audit trail read, so nothing downstream knows the address is structured. It is written by the server actions at filing time via `composeAddress()` (`src/lib/address.ts`) and never edited directly. Franchises registered before this migration keep their free-text `applicant_address` with a NULL `barangay`; `displayAddress()` handles both.
+
+`mtop.barangays` holds the 51 barangays of Ozamiz City under the PSA's PSGC spellings (PSGC `1004210000`) — note `Banadero` and `Diguan`, which are also written Bañadero and Digu-an locally. It is keyed by name, so a franchise row carries the readable value and composing an address needs no join, with `ON UPDATE CASCADE` so correcting a spelling reaches every franchise using it. There is no write policy: the list changes by plebiscite, and a correction is an `UPDATE` run by an administrator. `BarangaySelect` (`src/components/mtop/barangay-select.tsx`) is the picker, a native `<select>` for the same reasons as `AssociationSelect`.
+
+A change of ownership stages `new_barangay`/`new_purok` alongside `new_applicant_address`, and `grant_franchise()`'s `transfer_owner` branch moves all three onto the franchise, so a transferred franchise never keeps the previous owner's barangay.
+
 ### Associations
 
 Most motorcabs belong to an operators' association (MODA); strikers operate without one, so `association_id` is nullable and "No association" is the picker's default first option. `mtop.associations` holds the registry (name, president, contact number, `is_active`), seeded from the AOMODA directory with 70 entries, and `mtop_franchises.association_id` links each franchise to one.

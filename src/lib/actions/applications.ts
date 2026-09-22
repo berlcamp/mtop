@@ -13,6 +13,7 @@ import {
   SINGLE_OPERATOR_MESSAGE,
 } from "@/lib/operator-name"
 import { reopenTargetStage } from "@/lib/application-flow"
+import { composeAddress } from "@/lib/address"
 import type {
   MtopStatus,
   TransactionType,
@@ -194,7 +195,11 @@ export async function createNewFranchiseApplication(
       .from("mtop_franchises")
       .insert({
         applicant_name: input.applicant_name,
-        applicant_address: input.applicant_address,
+        barangay: input.barangay,
+        purok: input.purok?.trim() || null,
+        // The one readable line every other reader uses — the card, search,
+        // reports and the audit trail — composed once, here, at filing time.
+        applicant_address: composeAddress(input.purok, input.barangay),
         contact_number: input.contact_number,
         tricycle_body_number: input.tricycle_body_number,
         plate_number: input.plate_number,
@@ -363,8 +368,17 @@ export async function createFranchiseTransaction(
     const franchiseUpdates: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
     }
-    if (!isChangeOwnership && input.applicant_address !== undefined)
-      franchiseUpdates.applicant_address = input.applicant_address
+    // A change of ownership stages the successor's address instead; editing
+    // the current owner's address in the same breath would apply immediately
+    // and describe neither party correctly.
+    if (!isChangeOwnership && input.barangay) {
+      franchiseUpdates.barangay = input.barangay
+      franchiseUpdates.purok = input.purok?.trim() || null
+      franchiseUpdates.applicant_address = composeAddress(
+        input.purok,
+        input.barangay
+      )
+    }
     if (!isChangeOwnership && input.contact_number !== undefined)
       franchiseUpdates.contact_number = input.contact_number
     if (!isChangeUnit && input.plate_number !== undefined)
@@ -401,8 +415,10 @@ export async function createFranchiseTransaction(
         new_chassis_number: isChangeUnit ? input.new_chassis_number : null,
         new_plate_number: isChangeUnit ? input.new_plate_number || null : null,
         new_applicant_name: isChangeOwnership ? input.new_applicant_name : null,
+        new_barangay: isChangeOwnership ? input.new_barangay || null : null,
+        new_purok: isChangeOwnership ? input.new_purok?.trim() || null : null,
         new_applicant_address: isChangeOwnership
-          ? input.new_applicant_address || null
+          ? composeAddress(input.new_purok, input.new_barangay) || null
           : null,
         new_contact_number: isChangeOwnership
           ? input.new_contact_number || null

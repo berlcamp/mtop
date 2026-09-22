@@ -49,6 +49,8 @@ const franchiseFields: Record<string, AuditFieldMeta> = {
 
   applicant_name: { label: "Operator", group: "operator", kind: "text" },
   applicant_address: { label: "Operator address", group: "operator", kind: "text" },
+  barangay: { label: "Barangay", group: "operator", kind: "text" },
+  purok: { label: "Purok", group: "operator", kind: "text" },
   contact_number: { label: "Contact number", group: "operator", kind: "text" },
   owner_photo_url: { label: "Operator photo", group: "operator", kind: "photo" },
 

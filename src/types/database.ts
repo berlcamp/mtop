@@ -101,6 +101,10 @@ export interface MtopFranchise {
   make: string | null
   day_off: string | null
   association_id: string | null
+  // Structured address (20260413000020). NULL on franchises registered before
+  // it, which carry only the free-text applicant_address — see src/lib/address.ts.
+  barangay: string | null
+  purok: string | null
   granted_until: string | null
   franchise_status: FranchiseStatus
   closed_at: string | null
@@ -136,6 +140,8 @@ export interface MtopApplication {
   new_chassis_number: string | null
   new_plate_number: string | null
   new_applicant_name: string | null
+  new_barangay: string | null
+  new_purok: string | null
   new_applicant_address: string | null
   new_contact_number: string | null
 }
@@ -305,6 +311,17 @@ export interface ApprovalLog {
   created_at: string
 }
 
+/**
+ * One of the 51 barangays of Ozamiz City, seeded in 20260413000020 and keyed
+ * by name so a franchise row carries the readable value. Read-only: there is
+ * no write policy on the table.
+ */
+export interface Barangay {
+  name: string
+  is_active: boolean
+  created_at: string
+}
+
 export type AuditAction = "insert" | "update" | "delete"
 
 /**
@@ -410,6 +427,8 @@ export interface MtopSchema {
         | "last_confirmed_at"
         | "last_reissued_at"
         | "association_id"
+        | "barangay"
+        | "purok"
       > & {
         id?: string
         created_at?: string
@@ -426,6 +445,8 @@ export interface MtopSchema {
         last_confirmed_at?: string | null
         last_reissued_at?: string | null
         association_id?: string | null
+        barangay?: string | null
+        purok?: string | null
       }
       Update: Partial<Omit<MtopFranchise, "id">>
     }
@@ -445,6 +466,8 @@ export interface MtopSchema {
         | "new_applicant_name"
         | "new_applicant_address"
         | "new_contact_number"
+        | "new_barangay"
+        | "new_purok"
       > & {
         id?: string
         status?: MtopStatus
@@ -458,6 +481,8 @@ export interface MtopSchema {
         new_applicant_name?: string | null
         new_applicant_address?: string | null
         new_contact_number?: string | null
+        new_barangay?: string | null
+        new_purok?: string | null
       }
       Update: Partial<Omit<MtopApplication, "id">>
     }
@@ -545,6 +570,11 @@ export interface MtopSchema {
     }
     // Append-only: rows come from a trigger, so there is no Insert or Update
     // shape the application is ever allowed to use.
+    barangays: {
+      Row: Barangay
+      Insert: never
+      Update: never
+    }
     audit_logs: {
       Row: AuditLog
       Insert: never

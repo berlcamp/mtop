@@ -27,6 +27,7 @@ import type { FranchiseSearchHit } from "./franchise-lookup"
 import { RequirementsPreview } from "./requirements-preview"
 import { ReadOnlyField } from "./read-only-field"
 import { AssociationSelect } from "@/components/mtop/association-select"
+import { BarangaySelect } from "@/components/mtop/barangay-select"
 
 type ExistingCode = (typeof existingFranchiseTransactionCodes)[number]
 
@@ -54,7 +55,8 @@ export function FranchiseTransactionForm({
     defaultValues: {
       franchise_id: franchise.id,
       transaction_type_code: transactionType.code as ExistingCode,
-      applicant_address: franchise.applicant_address ?? "",
+      barangay: franchise.barangay ?? "",
+      purok: franchise.purok ?? "",
       contact_number: franchise.contact_number ?? "",
       tricycle_body_number: franchise.tricycle_body_number ?? "",
       plate_number: franchise.plate_number ?? "",
@@ -146,18 +148,34 @@ export function FranchiseTransactionForm({
             </CardHeader>
             <CardContent className="space-y-5">
               {!isChangeOwnership && (
-                <div className="space-y-2">
-                  <Label htmlFor="applicant_address">Address</Label>
-                  <Input
-                    id="applicant_address"
-                    {...register("applicant_address")}
-                    aria-invalid={!!errors.applicant_address}
-                  />
-                  {errors.applicant_address && (
-                    <p className="text-xs text-destructive">
-                      {errors.applicant_address.message}
-                    </p>
-                  )}
+                <div className="grid gap-5 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="barangay">Barangay</Label>
+                    <BarangaySelect
+                      id="barangay"
+                      invalid={!!errors.barangay}
+                      // A franchise recorded before the address was structured
+                      // has no barangay yet; the picker then simply starts
+                      // empty and the old free-text line stays on file until
+                      // someone chooses one.
+                      currentBarangay={franchise.barangay ?? null}
+                      {...register("barangay")}
+                    />
+                    {errors.barangay && (
+                      <p className="text-xs text-destructive">
+                        {errors.barangay.message}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="purok">Purok (optional)</Label>
+                    <Input
+                      id="purok"
+                      placeholder="e.g. Purok 5"
+                      {...register("purok")}
+                    />
+                  </div>
                 </div>
               )}
 
@@ -326,12 +344,29 @@ export function FranchiseTransactionForm({
 
                 <div className="grid gap-5 sm:grid-cols-2">
                   <div className="space-y-2">
-                    <Label htmlFor="new_applicant_address">
-                      New Owner&apos;s Address
+                    <Label htmlFor="new_barangay">
+                      New Owner&apos;s Barangay
+                    </Label>
+                    <BarangaySelect
+                      id="new_barangay"
+                      invalid={!!errors.new_barangay}
+                      {...register("new_barangay")}
+                    />
+                    {errors.new_barangay && (
+                      <p className="text-xs text-destructive">
+                        {errors.new_barangay.message}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="new_purok">
+                      New Owner&apos;s Purok (optional)
                     </Label>
                     <Input
-                      id="new_applicant_address"
-                      {...register("new_applicant_address")}
+                      id="new_purok"
+                      placeholder="e.g. Purok 5"
+                      {...register("new_purok")}
                     />
                   </div>
 

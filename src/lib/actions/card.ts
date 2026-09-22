@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server"
 import { getSystemSettings } from "@/lib/actions/settings"
+import { displayAddress } from "@/lib/address"
 
 async function getAuthUser() {
   const supabase = await createClient()
@@ -152,7 +153,11 @@ export async function getFranchiseCardData(applicationId: string): Promise<{
         validFrom: validity.from,
         validTo: validity.to,
         ownerName: franchise.applicant_name ?? "",
-        ownerAddress: franchise.applicant_address ?? "",
+        // Without the city: the permit's letterhead already says Ozamiz, and
+        // the address line is the narrowest field on the card. Franchises
+        // registered before the address was structured fall back to their
+        // free-text line — see src/lib/address.ts.
+        ownerAddress: displayAddress(franchise, { includeCity: false }),
         route: franchise.route ?? "",
         dayOff: franchise.day_off ?? "",
         make: franchise.make ?? "",

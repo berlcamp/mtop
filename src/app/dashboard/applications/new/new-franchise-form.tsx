@@ -23,7 +23,8 @@ import {
   createNewFranchiseApplication,
   checkOperatorAvailability,
 } from "@/lib/actions/applications"
-import { AssociationSelect } from "@/components/mtop/association-select";
+import { AssociationSelect } from "@/components/mtop/association-select"
+import { BarangaySelect } from "@/components/mtop/barangay-select";
 import type { TransactionType } from "@/types/database";
 import { RequirementsPreview } from "./requirements-preview";
 
@@ -54,7 +55,8 @@ export function NewFranchiseForm({
     resolver: zodResolver(newFranchiseApplicationSchema),
     defaultValues: {
       applicant_name: "",
-      applicant_address: "",
+      barangay: "",
+      purok: "",
       contact_number: "",
       tricycle_body_number: "",
       plate_number: "",
@@ -178,19 +180,29 @@ export function NewFranchiseForm({
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="applicant_address">Address</Label>
-                <Input
-                  id="applicant_address"
-                  placeholder="Complete address"
-                  {...register("applicant_address")}
-                  aria-invalid={!!errors.applicant_address}
-                />
-                {errors.applicant_address && (
-                  <p className="text-xs text-destructive">
-                    {errors.applicant_address.message}
-                  </p>
-                )}
+              <div className="grid gap-5 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="barangay">Barangay</Label>
+                  <BarangaySelect
+                    id="barangay"
+                    invalid={!!errors.barangay}
+                    {...register("barangay")}
+                  />
+                  {errors.barangay && (
+                    <p className="text-xs text-destructive">
+                      {errors.barangay.message}
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="purok">Purok (optional)</Label>
+                  <Input
+                    id="purok"
+                    placeholder="e.g. Purok 5"
+                    {...register("purok")}
+                  />
+                </div>
               </div>
             </CardContent>
           </Card>

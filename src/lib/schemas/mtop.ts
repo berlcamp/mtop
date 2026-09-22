@@ -9,7 +9,12 @@ export const franchiseSchema = z.object({
     .min(2, "Applicant name must be at least 2 characters")
     // One operator per franchise — see src/lib/operator-name.ts.
     .refine((v) => !findCoOwnerMarker(v), SINGLE_OPERATOR_MESSAGE),
-  applicant_address: z.string().min(5, "Address must be at least 5 characters"),
+  // Address is structured: the barangay comes from mtop.barangays (a foreign
+  // key, so it can be counted) and the purok is free text, since puroks have
+  // no citywide register. The one-line applicant_address the rest of the
+  // system reads is composed from these by the server action.
+  barangay: z.string().min(1, "Select a barangay"),
+  purok: z.string().trim().max(80).optional(),
   contact_number: z.string().min(7, "Contact number must be at least 7 characters"),
   tricycle_body_number: z.string().min(1, "Body number is required"),
   plate_number: z.string().min(1, "Plate number is required"),
@@ -51,10 +56,8 @@ export const existingFranchiseTransactionCodes = [
 const franchiseTransactionBaseSchema = z.object({
   franchise_id: z.string().uuid(),
   transaction_type_code: z.enum(existingFranchiseTransactionCodes),
-  applicant_address: z
-    .string()
-    .min(5, "Address must be at least 5 characters")
-    .optional(),
+  barangay: z.string().optional(),
+  purok: z.string().trim().max(80).optional(),
   contact_number: z
     .string()
     .min(7, "Contact number must be at least 7 characters")
@@ -77,7 +80,8 @@ const franchiseTransactionBaseSchema = z.object({
     .trim()
     .refine((v) => !v || !findCoOwnerMarker(v), SINGLE_OPERATOR_MESSAGE)
     .optional(),
-  new_applicant_address: z.string().trim().optional(),
+  new_barangay: z.string().optional(),
+  new_purok: z.string().trim().max(80).optional(),
   new_contact_number: z.string().trim().optional(),
 })
 
@@ -108,6 +112,20 @@ export const franchiseTransactionSchema = franchiseTransactionBaseSchema.superRe
         code: "custom",
         path: ["new_applicant_name"],
         message: "The new owner's name is required for a change of ownership",
+      })
+    }
+
+    // The successor's barangay is what the franchise ends up carrying once the
+    // transfer is granted, so it is as required here as it is on a new
+    // franchise — otherwise the record keeps the previous owner's address.
+    if (
+      data.transaction_type_code === "change_ownership" &&
+      !data.new_barangay
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["new_barangay"],
+        message: "Select the new owner's barangay",
       })
     }
   }
