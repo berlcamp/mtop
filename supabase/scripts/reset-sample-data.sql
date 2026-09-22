@@ -5,10 +5,11 @@
 -- Supabase CLI will never run it automatically. Run it by hand, once, when
 -- you actually want to clear test data:
 --
---   supabase db execute -f supabase/scripts/reset-sample-data.sql
+--   supabase db query -f supabase/scripts/reset-sample-data.sql --linked
 --
--- or paste it into the Supabase Studio SQL editor. It is irreversible and
--- only ever meant for a dev/staging project — never run this against
+-- (--linked requires `supabase login` + `supabase link` first; without that,
+-- paste it into the Supabase Studio SQL editor instead.) It is irreversible
+-- and only ever meant for a dev/staging project — never run this against
 -- production.
 --
 -- Left untouched (reference/config data, not "sample data"):

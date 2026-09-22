@@ -11,7 +11,10 @@
 -- normalisation below is written out inline. It matches
 -- mtop.normalize_operator_name() exactly.
 --
---   supabase db execute -f supabase/scripts/close-duplicate-operator-franchises.sql
+--   supabase db query -f supabase/scripts/close-duplicate-operator-franchises.sql --linked
+--
+-- (--linked requires `supabase login` + `supabase link` first; without that,
+-- paste it into the Supabase Studio SQL editor instead.)
 --
 -- If the data is purely test data, prefer supabase/scripts/reset-sample-data.sql
 -- instead -- it wipes everything and lets you start clean.
