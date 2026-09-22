@@ -13,7 +13,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
-import { Loader2, CalendarClock, Bell, Phone } from "lucide-react"
+import { Loader2, CalendarClock, Bell, Phone, Stamp } from "lucide-react"
 import {
   systemSettingsSchema,
   type SystemSettingsFormValues,
@@ -37,6 +37,7 @@ export function SettingsContent({ settings }: { settings: SystemSettings }) {
       permit_validity_years: settings.permit_validity_years,
       renewal_window_days: settings.renewal_window_days,
       ctms_contact_number: settings.ctms_contact_number,
+      mayor_name: settings.mayor_name,
     },
   })
 
@@ -142,6 +143,36 @@ export function SettingsContent({ settings }: { settings: SystemSettings }) {
             {errors.ctms_contact_number && (
               <p className="text-xs text-destructive">
                 {errors.ctms_contact_number.message}
+              </p>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Stamp className="h-4 w-4" />
+            Signatory
+          </CardTitle>
+          <CardDescription>
+            The name printed under &ldquo;APPROVED:&rdquo; on the confirmation
+            slip. It changes with the administration, so it lives here rather
+            than in the document.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            <Label htmlFor="mayor_name">City Mayor</Label>
+            <Input
+              id="mayor_name"
+              placeholder="ATTY. JUAN DELA CRUZ"
+              className="w-80"
+              {...register("mayor_name")}
+            />
+            {errors.mayor_name && (
+              <p className="text-xs text-destructive">
+                {errors.mayor_name.message}
               </p>
             )}
           </div>

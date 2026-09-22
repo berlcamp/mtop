@@ -1,6 +1,7 @@
 "use server"
 
 import { createClient } from "@/lib/supabase/server"
+import { getSystemSettings } from "@/lib/actions/settings"
 import { displayAddress } from "@/lib/address"
 
 async function getAuthUser() {
@@ -37,6 +38,8 @@ export interface ConfirmationSlipData {
   amountPaid: string
   datePaid: string
   issuedAt: string
+  /** Signatory, from system settings — a new mayor is not a deployment. */
+  mayorName: string
 }
 
 const MONTHS = [
@@ -120,12 +123,15 @@ export async function getConfirmationSlipData(applicationId: string): Promise<{
     const franchise = application.franchise
     if (!franchise) return { error: "Franchise not found.", data: null }
 
-    const { data: payments } = await supabase
-      .schema("mtop")
-      .from("mtop_payments")
-      .select("or_number, amount_paid, payment_date")
-      .eq("application_id", applicationId)
-      .order("payment_date", { ascending: true })
+    const [{ data: payments }, { data: settings }] = await Promise.all([
+      supabase
+        .schema("mtop")
+        .from("mtop_payments")
+        .select("or_number, amount_paid, payment_date")
+        .eq("application_id", applicationId)
+        .order("payment_date", { ascending: true }),
+      getSystemSettings(),
+    ])
 
     const paid = payments ?? []
     const total = paid.reduce(
@@ -159,6 +165,7 @@ export async function getConfirmationSlipData(applicationId: string): Promise<{
             : "",
         datePaid: formatSlipDate(paid[0]?.payment_date ?? null),
         issuedAt: paid.length > 0 ? "OZAMIZ CITY" : "",
+        mayorName: settings.mayor_name,
       },
     }
   } catch (e) {

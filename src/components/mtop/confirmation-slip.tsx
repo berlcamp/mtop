@@ -26,13 +26,14 @@ const SANS = 'Arial, Helvetica, sans-serif'
 const TYPED = '"Courier New", Courier, monospace'
 
 /**
- * Which copy this print is. The office issues the slip in sets — the LTO's
- * copy is the one this reproduces; change this string for another copy.
+ * The slip is issued in a set of two: the LTO's copy carries the red marking,
+ * the office's own copy is the same sheet without it. Printing both together
+ * is what the counter actually needs — one press, two sheets — so the page
+ * renders the set rather than a single slip.
  */
 const COPY_LABEL = "LTO COPY"
 
-/** The signatory. Changes with the administration, not with the code. */
-const MAYOR_NAME = "ATTY. SAM NORMAN G. FUENTES"
+/** The office the signatory holds. Unlike the name, this does not change. */
 const MAYOR_TITLE = "City Mayor"
 
 /** Typed values sit at this size unless the value is too long for its rule. */
@@ -150,7 +151,17 @@ function PaymentRow({ label, value }: { label: string; value: string }) {
   )
 }
 
-export function ConfirmationSlip({ data }: { data: ConfirmationSlipData }) {
+/**
+ * One sheet. `copyLabel` is the red marking in the top right — the LTO's copy
+ * carries it, the office's copy is the same sheet without one.
+ */
+function Sheet({
+  data,
+  copyLabel,
+}: {
+  data: ConfirmationSlipData
+  copyLabel?: string
+}) {
   return (
     <div
       className="mtop-slip"
@@ -201,7 +212,8 @@ export function ConfirmationSlip({ data }: { data: ConfirmationSlipData }) {
         </div>
       </div>
 
-      {/* Copy marking */}
+      {/* Copy marking. The unmarked copy still reserves the line, so both
+          sheets of the set line up page for page. */}
       <div
         style={{
           marginTop: "42pt",
@@ -213,7 +225,7 @@ export function ConfirmationSlip({ data }: { data: ConfirmationSlipData }) {
           letterSpacing: "0.5pt",
         }}
       >
-        {COPY_LABEL}
+        {copyLabel ?? "\u00A0"}
       </div>
 
       <div
@@ -318,9 +330,25 @@ export function ConfirmationSlip({ data }: { data: ConfirmationSlipData }) {
       <div style={{ marginTop: "40pt", textAlign: "center" }}>
         <div style={{ fontSize: "12pt" }}>APPROVED:</div>
         <div style={{ height: "54pt" }} />
-        <div style={{ fontWeight: 700, fontSize: "12pt" }}>{MAYOR_NAME}</div>
+        <div style={{ fontWeight: 700, fontSize: "12pt" }}>
+          {data.mayorName || "\u00A0"}
+        </div>
         <div style={{ fontSize: "11pt" }}>{MAYOR_TITLE}</div>
       </div>
     </div>
+  )
+}
+
+/**
+ * The pair the office issues together: the LTO's marked copy, then its own
+ * unmarked one. Each sheet is its own page — `.mtop-slip` breaks after itself
+ * in print.css — so one press of Print produces the whole set.
+ */
+export function ConfirmationSlip({ data }: { data: ConfirmationSlipData }) {
+  return (
+    <>
+      <Sheet data={data} copyLabel={COPY_LABEL} />
+      <Sheet data={data} />
+    </>
   )
 }

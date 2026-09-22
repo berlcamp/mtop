@@ -17,12 +17,15 @@ export interface SystemSettings {
   permit_validity_years: number
   renewal_window_days: number
   ctms_contact_number: string
+  /** Signatory on the confirmation slip. Seeded by 20260413000025. */
+  mayor_name: string
 }
 
 const DEFAULTS: SystemSettings = {
   permit_validity_years: 3,
   renewal_window_days: 90,
   ctms_contact_number: "",
+  mayor_name: "",
 }
 
 export async function getSystemSettings(): Promise<{
@@ -40,6 +43,7 @@ export async function getSystemSettings(): Promise<{
         "permit_validity_years",
         "renewal_window_days",
         "ctms_contact_number",
+        "mayor_name",
       ])
 
     if (error) return { error: error.message, data: DEFAULTS }
@@ -55,6 +59,10 @@ export async function getSystemSettings(): Promise<{
       if (row.key === "ctms_contact_number") {
         settings.ctms_contact_number =
           typeof row.value === "string" ? row.value : DEFAULTS.ctms_contact_number
+      }
+      if (row.key === "mayor_name") {
+        settings.mayor_name =
+          typeof row.value === "string" ? row.value : DEFAULTS.mayor_name
       }
     }
 
@@ -84,6 +92,12 @@ export async function updateSystemSettings(input: SystemSettingsFormValues) {
       {
         key: "ctms_contact_number",
         value: input.ctms_contact_number?.trim() ?? "",
+        updated_by: user.id,
+        updated_at: new Date().toISOString(),
+      },
+      {
+        key: "mayor_name",
+        value: input.mayor_name?.trim() ?? "",
         updated_by: user.id,
         updated_at: new Date().toISOString(),
       },

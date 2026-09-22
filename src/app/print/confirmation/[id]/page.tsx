@@ -30,9 +30,9 @@ export default async function PrintConfirmationSlipPage({
       <PrintControls
         title="Confirmation Slip"
         subject={data.mtopNumber}
-        hint="Print on 8.5 × 13 in (long bond) at 100% scale, background graphics on."
+        hint="Two sheets — the LTO copy and the office copy. Print on 8.5 × 13 in (long bond) at 100% scale, background graphics on."
       />
-      <div className="card-stage">
+      <div className="card-stage slip-stage">
         <ConfirmationSlip data={data} />
       </div>
     </main>

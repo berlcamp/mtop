@@ -10,6 +10,14 @@
   padding: 24px 16px 48px;
 }
 
+/* The confirmation slip prints as a set of two sheets, so its stage stacks
+   them rather than sitting them side by side like the single-sheet card. */
+.slip-stage {
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+}
+
 /* The slip is a white form, so only its drop shadow separates it from the
    stage; the red copy marking still has to survive the print pipeline. */
 .mtop-slip {
@@ -57,5 +65,22 @@
   .mtop-slip {
     box-shadow: none;
     break-inside: avoid;
+  }
+
+  /* Block, not flex: Chrome does not reliably break a flex item across
+     pages, and each sheet of the set has to land on its own. */
+  .slip-stage {
+    display: block;
+    gap: 0;
+  }
+
+  /* Each copy is its own sheet. The last one breaks nothing, or the printer
+     would spit out a blank page after the set. */
+  .mtop-slip {
+    break-after: page;
+  }
+
+  .mtop-slip:last-child {
+    break-after: auto;
   }
 }
