@@ -40,6 +40,8 @@ export function FranchiseTransactionForm({
   onSubmitted: (applicationId: string) => void
 }) {
   const [serverError, setServerError] = useState<string | null>(null)
+  const isChangeUnit = transactionType.code === "change_unit"
+  const isChangeOwnership = transactionType.code === "change_ownership"
 
   const {
     register,
@@ -134,43 +136,53 @@ export function FranchiseTransactionForm({
             <CardHeader>
               <CardTitle className="text-lg">Details on File</CardTitle>
               <CardDescription>
-                Correct anything that has changed since the last transaction.
+                {isChangeOwnership
+                  ? "Correct anything about the unit that has changed. The current owner's address and contact number stay on file until the transfer is granted."
+                  : "Correct anything that has changed since the last transaction."}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
-              <div className="space-y-2">
-                <Label htmlFor="applicant_address">Address</Label>
-                <Input
-                  id="applicant_address"
-                  {...register("applicant_address")}
-                  aria-invalid={!!errors.applicant_address}
-                />
-                {errors.applicant_address && (
-                  <p className="text-xs text-destructive">
-                    {errors.applicant_address.message}
-                  </p>
-                )}
-              </div>
-
-              <div className="grid gap-5 sm:grid-cols-2">
+              {!isChangeOwnership && (
                 <div className="space-y-2">
-                  <Label htmlFor="contact_number">Contact Number</Label>
+                  <Label htmlFor="applicant_address">Address</Label>
                   <Input
-                    id="contact_number"
-                    {...register("contact_number")}
-                    aria-invalid={!!errors.contact_number}
+                    id="applicant_address"
+                    {...register("applicant_address")}
+                    aria-invalid={!!errors.applicant_address}
                   />
-                  {errors.contact_number && (
+                  {errors.applicant_address && (
                     <p className="text-xs text-destructive">
-                      {errors.contact_number.message}
+                      {errors.applicant_address.message}
                     </p>
                   )}
                 </div>
+              )}
 
-                <div className="space-y-2">
-                  <Label htmlFor="plate_number">Plate Number</Label>
-                  <Input id="plate_number" {...register("plate_number")} />
-                </div>
+              <div className="grid gap-5 sm:grid-cols-2">
+                {!isChangeOwnership && (
+                  <div className="space-y-2">
+                    <Label htmlFor="contact_number">Contact Number</Label>
+                    <Input
+                      id="contact_number"
+                      {...register("contact_number")}
+                      aria-invalid={!!errors.contact_number}
+                    />
+                    {errors.contact_number && (
+                      <p className="text-xs text-destructive">
+                        {errors.contact_number.message}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* Plate number is part of the unit being replaced on a change
+                    of unit — captured in "New Unit Details" instead, not here. */}
+                {!isChangeUnit && (
+                  <div className="space-y-2">
+                    <Label htmlFor="plate_number">Plate Number</Label>
+                    <Input id="plate_number" {...register("plate_number")} />
+                  </div>
+                )}
 
                 <div className="space-y-2">
                   <Label htmlFor="tricycle_body_number">Body Number</Label>
@@ -202,6 +214,115 @@ export function FranchiseTransactionForm({
               </div>
             </CardContent>
           </Card>
+
+          {/* Change of unit — the new motor/chassis/plate are staged here and
+              only applied to the franchise once this transaction is granted
+              (mtop.grant_franchise, replace_unit effect). */}
+          {isChangeUnit && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">New Unit Details</CardTitle>
+                <CardDescription>
+                  Takes effect only once this transaction is granted — the
+                  current unit stays on record until then.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                <div className="grid gap-5 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="new_motor_number">New Motor Number</Label>
+                    <Input
+                      id="new_motor_number"
+                      {...register("new_motor_number")}
+                      aria-invalid={!!errors.new_motor_number}
+                    />
+                    {errors.new_motor_number && (
+                      <p className="text-xs text-destructive">
+                        {errors.new_motor_number.message}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="new_chassis_number">New Chassis Number</Label>
+                    <Input
+                      id="new_chassis_number"
+                      {...register("new_chassis_number")}
+                      aria-invalid={!!errors.new_chassis_number}
+                    />
+                    {errors.new_chassis_number && (
+                      <p className="text-xs text-destructive">
+                        {errors.new_chassis_number.message}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="new_plate_number">
+                      New Plate Number (optional)
+                    </Label>
+                    <Input
+                      id="new_plate_number"
+                      placeholder="Leave blank to keep the current plate"
+                      {...register("new_plate_number")}
+                    />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Change of ownership — the successor's details are staged here and
+              only applied to the franchise once this transaction is granted
+              (mtop.grant_franchise, transfer_owner effect). */}
+          {isChangeOwnership && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">New Owner Information</CardTitle>
+                <CardDescription>
+                  Takes effect only once this transaction is granted — the
+                  current owner stays on record until then.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                <div className="space-y-2">
+                  <Label htmlFor="new_applicant_name">New Owner&apos;s Full Name</Label>
+                  <Input
+                    id="new_applicant_name"
+                    {...register("new_applicant_name")}
+                    aria-invalid={!!errors.new_applicant_name}
+                  />
+                  {errors.new_applicant_name && (
+                    <p className="text-xs text-destructive">
+                      {errors.new_applicant_name.message}
+                    </p>
+                  )}
+                </div>
+
+                <div className="grid gap-5 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="new_applicant_address">
+                      New Owner&apos;s Address
+                    </Label>
+                    <Input
+                      id="new_applicant_address"
+                      {...register("new_applicant_address")}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="new_contact_number">
+                      New Owner&apos;s Contact Number
+                    </Label>
+                    <Input
+                      id="new_contact_number"
+                      {...register("new_contact_number")}
+                    />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" onClick={onBack}>

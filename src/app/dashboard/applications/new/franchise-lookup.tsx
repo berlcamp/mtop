@@ -109,13 +109,15 @@ export function FranchiseLookup({
             <ul className="divide-y divide-border/50 rounded-lg border border-border/60">
               {results.map((f) => {
                 // Every existing-franchise transaction needs a franchise the
-                // city has actually granted, and only one application may be in
-                // flight at a time.
+                // city has actually granted, that isn't closed, and only one
+                // application may be in flight at a time.
                 const blockedReason = f.has_active_application
                   ? "An application is already in flight for this franchise"
                   : !f.granted_until
                     ? "Franchise has not been granted yet"
-                    : ""
+                    : f.franchise_status !== "active"
+                      ? `Franchise is ${f.franchise_status}`
+                      : ""
 
                 return (
                   <li

@@ -181,6 +181,11 @@ export function GlobalSearch() {
                   </div>
 
                   <div className="flex shrink-0 items-center gap-2">
+                    {row.franchise_status !== "active" && (
+                      <span className="rounded-full bg-muted px-2 py-0.5 text-xs capitalize text-muted-foreground">
+                        {row.franchise_status}
+                      </span>
+                    )}
                     {row.latest_status && (
                       <StatusBadge status={row.latest_status} />
                     )}

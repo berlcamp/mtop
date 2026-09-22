@@ -40,7 +40,7 @@ export const existingFranchiseTransactionCodes = [
   "closure",
 ] as const
 
-export const franchiseTransactionSchema = z.object({
+const franchiseTransactionBaseSchema = z.object({
   franchise_id: z.string().uuid(),
   transaction_type_code: z.enum(existingFranchiseTransactionCodes),
   applicant_address: z
@@ -57,7 +57,48 @@ export const franchiseTransactionSchema = z.object({
   make: z.string().trim().max(60).optional(),
   day_off: z.string().trim().max(60).optional(),
   due_date: z.string().optional(),
+  // Staged, not applied — mtop.grant_franchise() applies these to the
+  // franchise only once the transaction is actually granted. See
+  // replace_unit / transfer_owner in 20260413000015_grant_effects.sql.
+  new_motor_number: z.string().trim().optional(),
+  new_chassis_number: z.string().trim().optional(),
+  new_plate_number: z.string().trim().optional(),
+  new_applicant_name: z.string().trim().optional(),
+  new_applicant_address: z.string().trim().optional(),
+  new_contact_number: z.string().trim().optional(),
 })
+
+export const franchiseTransactionSchema = franchiseTransactionBaseSchema.superRefine(
+  (data, ctx) => {
+    if (data.transaction_type_code === "change_unit") {
+      if (!data.new_motor_number) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["new_motor_number"],
+          message: "New motor number is required for a change of unit",
+        })
+      }
+      if (!data.new_chassis_number) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["new_chassis_number"],
+          message: "New chassis number is required for a change of unit",
+        })
+      }
+    }
+
+    if (
+      data.transaction_type_code === "change_ownership" &&
+      !data.new_applicant_name
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["new_applicant_name"],
+        message: "The new owner's name is required for a change of ownership",
+      })
+    }
+  }
+)
 
 export type FranchiseTransactionFormValues = z.infer<
   typeof franchiseTransactionSchema

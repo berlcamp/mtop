@@ -67,9 +67,19 @@ Creation flow (`src/lib/actions/applications.ts`):
 - `createFranchiseTransaction` files any of the six transactions against an existing franchise. The franchise must already be granted. The renewal-window rule (`today >= granted_until − system_settings.renewal_window_days`) applies **only** to `renewal`. Blocked if another application is in-flight.
 - `searchFranchises(query)` powers the lookup on the new-application page; `searchFranchisesGlobal(query)` in `src/lib/actions/search.ts` powers the topbar search (⌘K), which resolves a hit to its most recent application.
 
-`mtop.grant_franchise(franchise_id, granted_at, validity_years)` is a `SECURITY DEFINER` Postgres function that runs when an application transitions to `granted`. It atomically (a) assigns the next MTOP number via `mtop.next_mtop_number(year)` if the franchise doesn't have one yet (year-prefixed, `2026-0001`), and (b) advances `granted_until` to `granted_at + validity_years` (anniversary).
+`mtop.grant_franchise(application_id, granted_at, validity_years)` is a `SECURITY DEFINER` Postgres function that runs when an application transitions to `granted`. It looks up the application's `transaction_type.grant_effect` and branches:
 
-It currently implements only the `issue_number` and `extend_validity` grant effects — the other five (`replace_unit`, `transfer_owner`, `confirm_year`, `reprint_permit`, `close_franchise`) are seeded on `transaction_types` but not yet branched on here.
+| `grant_effect` | Transaction | What it does |
+|---|---|---|
+| `issue_number` | New Franchise | Assigns the next MTOP number via `mtop.next_mtop_number(year)` (year-prefixed, `2026-0001`) and sets `granted_until` |
+| `extend_validity` | Renewal | Advances `granted_until` to `granted_at + validity_years`, keeps the number |
+| `replace_unit` | Change of Unit | Copies `new_motor_number`/`new_chassis_number`/`new_plate_number` from the application onto the franchise; logs the old values to `mtop.franchise_unit_history` |
+| `transfer_owner` | Change of Ownership | Copies `new_applicant_name`/`new_applicant_address`/`new_contact_number` from the application onto the franchise; logs the old values to `mtop.franchise_ownership_history` |
+| `confirm_year` | Annual Confirmation Slip | Sets `last_confirmed_at`; no change to number or validity |
+| `reprint_permit` | Re-Issuance | Sets `last_reissued_at`; no change to number or validity |
+| `close_franchise` | Closure | Sets `franchise_status = 'closed'` and `closed_at`; `granted_until`/`mtop_number` are left as history |
+
+The `new_*` columns on `mtop_applications` are staged by `createFranchiseTransaction` at filing time and applied only here — the identity change (unit or owner) takes effect on grant, not on filing. `mtop.mtop_franchises.franchise_status` (`active` / `closed` / `abandoned` / `revoked` / `cancelled`) gates new filings — `createFranchiseTransaction` and the franchise lookup both refuse a non-`active` franchise. Only `close_franchise` sets it today; the 120-day abandonment sweep and 3-violation revocation from the ordinance are not implemented.
 
 System settings drive both the validity period (`permit_validity_years`, default 3) and renewal window (`renewal_window_days`, default 90); managed in `src/lib/actions/settings.ts`.
 

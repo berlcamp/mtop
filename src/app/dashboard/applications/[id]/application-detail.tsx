@@ -34,6 +34,7 @@ import {
   CheckCircle2,
   Loader2,
   Printer,
+  ArrowRight,
 } from "lucide-react"
 import { format } from "date-fns"
 import { updateApplicationStatus } from "@/lib/actions/applications"
@@ -233,6 +234,18 @@ export function ApplicationDetail({ application, settings }: { application: any;
             ))}
           </AlertDescription>
         </Alert>
+      )}
+
+      {/* Pending change — only change_unit / change_ownership stage a change
+          on the application to apply later. Shown at every stage so approvers
+          can see exactly what granting this application will do. */}
+      {(transactionType?.grant_effect === "replace_unit" ||
+        transactionType?.grant_effect === "transfer_owner") && (
+        <PendingChangeCard
+          transactionType={transactionType}
+          application={application}
+          franchise={franchise}
+        />
       )}
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -483,6 +496,88 @@ export function ApplicationDetail({ application, settings }: { application: any;
         </div>
       </div>
     </div>
+  )
+}
+
+function PendingChangeCard({
+  transactionType,
+  application,
+  franchise,
+}: {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  transactionType: any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  application: any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  franchise: any
+}) {
+  const isGranted = application.status === "granted"
+  const verb = isGranted ? "was applied on grant" : "applies once this application is granted"
+
+  const rows: { label: string; from: string; to: string }[] =
+    transactionType.grant_effect === "replace_unit"
+      ? [
+          {
+            label: "Motor Number",
+            from: franchise?.motor_number ?? "—",
+            to: application.new_motor_number ?? "—",
+          },
+          {
+            label: "Chassis Number",
+            from: franchise?.chassis_number ?? "—",
+            to: application.new_chassis_number ?? "—",
+          },
+          {
+            label: "Plate Number",
+            from: franchise?.plate_number ?? "—",
+            to: application.new_plate_number ?? franchise?.plate_number ?? "—",
+          },
+        ]
+      : [
+          {
+            label: "Owner",
+            from: franchise?.applicant_name ?? "—",
+            to: application.new_applicant_name ?? "—",
+          },
+          {
+            label: "Address",
+            from: franchise?.applicant_address ?? "—",
+            to: application.new_applicant_address ?? franchise?.applicant_address ?? "—",
+          },
+          {
+            label: "Contact Number",
+            from: franchise?.contact_number ?? "—",
+            to: application.new_contact_number ?? franchise?.contact_number ?? "—",
+          },
+        ]
+
+  return (
+    <Alert className="border-blue-200 bg-blue-50">
+      <ArrowRight className="h-4 w-4 text-blue-600" />
+      <AlertTitle className="text-blue-800">
+        {transactionType.grant_effect === "replace_unit"
+          ? "Change of Unit"
+          : "Change of Ownership"}{" "}
+        pending
+      </AlertTitle>
+      <AlertDescription className="text-blue-700">
+        <p className="mb-2">This change {verb}.</p>
+        <dl className="space-y-1">
+          {rows.map((row) => (
+            <div key={row.label} className="flex flex-wrap items-center gap-1.5 text-sm">
+              <dt className="font-medium">{row.label}:</dt>
+              <dd className="flex items-center gap-1.5">
+                <span className={isGranted ? "line-through opacity-60" : ""}>
+                  {row.from}
+                </span>
+                <ArrowRight className="h-3 w-3" />
+                <span className="font-semibold">{row.to}</span>
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </AlertDescription>
+    </Alert>
   )
 }
 

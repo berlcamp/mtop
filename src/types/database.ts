@@ -42,6 +42,13 @@ export type RequirementKind =
   | "photo"
   | "surrender"
 
+export type FranchiseStatus =
+  | "active"
+  | "closed"
+  | "abandoned"
+  | "revoked"
+  | "cancelled"
+
 export type ApprovalAction = "approved" | "rejected" | "returned" | "forwarded"
 
 export type InspectionResult = "passed" | "failed"
@@ -94,6 +101,10 @@ export interface MtopFranchise {
   make: string | null
   day_off: string | null
   granted_until: string | null
+  franchise_status: FranchiseStatus
+  closed_at: string | null
+  last_confirmed_at: string | null
+  last_reissued_at: string | null
   owner_photo_url: string | null
   driver_photo_url: string | null
   driver_name: string | null
@@ -117,6 +128,43 @@ export interface MtopApplication {
   created_by: string | null
   created_at: string
   updated_at: string
+  // Staged by createFranchiseTransaction, applied to the franchise only when
+  // mtop.grant_franchise() runs the matching effect — see CLAUDE.md →
+  // "Transactions and Requirements".
+  new_motor_number: string | null
+  new_chassis_number: string | null
+  new_plate_number: string | null
+  new_applicant_name: string | null
+  new_applicant_address: string | null
+  new_contact_number: string | null
+}
+
+export interface FranchiseUnitHistory {
+  id: string
+  franchise_id: string
+  application_id: string | null
+  changed_by: string | null
+  changed_at: string
+  previous_motor_number: string | null
+  previous_chassis_number: string | null
+  previous_plate_number: string | null
+  new_motor_number: string
+  new_chassis_number: string
+  new_plate_number: string | null
+}
+
+export interface FranchiseOwnershipHistory {
+  id: string
+  franchise_id: string
+  application_id: string | null
+  changed_by: string | null
+  changed_at: string
+  previous_applicant_name: string
+  previous_applicant_address: string | null
+  previous_contact_number: string | null
+  new_applicant_name: string
+  new_applicant_address: string | null
+  new_contact_number: string | null
 }
 
 export interface TransactionType {
@@ -325,6 +373,10 @@ export interface MtopSchema {
         | "driver_address"
         | "make"
         | "day_off"
+        | "franchise_status"
+        | "closed_at"
+        | "last_confirmed_at"
+        | "last_reissued_at"
       > & {
         id?: string
         created_at?: string
@@ -336,20 +388,60 @@ export interface MtopSchema {
         driver_address?: string | null
         make?: string | null
         day_off?: string | null
+        franchise_status?: FranchiseStatus
+        closed_at?: string | null
+        last_confirmed_at?: string | null
+        last_reissued_at?: string | null
       }
       Update: Partial<Omit<MtopFranchise, "id">>
     }
     mtop_applications: {
       Row: MtopApplication
-      Insert: Omit<MtopApplication, "id" | "status" | "fiscal_year" | "submitted_at" | "created_at" | "updated_at"> & {
+      Insert: Omit<
+        MtopApplication,
+        | "id"
+        | "status"
+        | "fiscal_year"
+        | "submitted_at"
+        | "created_at"
+        | "updated_at"
+        | "new_motor_number"
+        | "new_chassis_number"
+        | "new_plate_number"
+        | "new_applicant_name"
+        | "new_applicant_address"
+        | "new_contact_number"
+      > & {
         id?: string
         status?: MtopStatus
         fiscal_year?: number
         submitted_at?: string
         created_at?: string
         updated_at?: string
+        new_motor_number?: string | null
+        new_chassis_number?: string | null
+        new_plate_number?: string | null
+        new_applicant_name?: string | null
+        new_applicant_address?: string | null
+        new_contact_number?: string | null
       }
       Update: Partial<Omit<MtopApplication, "id">>
+    }
+    franchise_unit_history: {
+      Row: FranchiseUnitHistory
+      Insert: Omit<FranchiseUnitHistory, "id" | "changed_at"> & {
+        id?: string
+        changed_at?: string
+      }
+      Update: Partial<Omit<FranchiseUnitHistory, "id">>
+    }
+    franchise_ownership_history: {
+      Row: FranchiseOwnershipHistory
+      Insert: Omit<FranchiseOwnershipHistory, "id" | "changed_at"> & {
+        id?: string
+        changed_at?: string
+      }
+      Update: Partial<Omit<FranchiseOwnershipHistory, "id">>
     }
     transaction_types: {
       Row: TransactionType
@@ -422,5 +514,6 @@ export interface MtopSchema {
     mtop_status: MtopStatus
     requirement_kind: RequirementKind
     grant_effect: GrantEffect
+    franchise_status: FranchiseStatus
   }
 }

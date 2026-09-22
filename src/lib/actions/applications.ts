@@ -201,7 +201,7 @@ export async function createFranchiseTransaction(
     const { data: franchise, error: franchiseError } = await supabase
       .schema("mtop")
       .from("mtop_franchises")
-      .select("id, mtop_number, granted_until")
+      .select("id, mtop_number, granted_until, franchise_status")
       .eq("id", input.franchise_id)
       .single()
 
@@ -212,6 +212,13 @@ export async function createFranchiseTransaction(
     if (!franchise.granted_until || !franchise.mtop_number) {
       return {
         error: `This franchise has not been granted yet — ${transactionType.name} cannot be filed until its first application is granted.`,
+        data: null,
+      }
+    }
+
+    if (franchise.franchise_status !== "active") {
+      return {
+        error: `This franchise is ${franchise.franchise_status} and cannot file new transactions.`,
         data: null,
       }
     }
@@ -254,14 +261,23 @@ export async function createFranchiseTransaction(
       }
     }
 
+    // Plain corrections (address, contact, route, make, day off) apply right
+    // away regardless of transaction — they are not what the transaction is
+    // *about*. Plate number is the exception on change_unit, and applicant
+    // address/contact on change_ownership: those are the subject of the
+    // transaction, so they are staged as new_* below and applied only on
+    // grant, alongside motor/chassis/owner name.
+    const isChangeUnit = input.transaction_type_code === "change_unit"
+    const isChangeOwnership = input.transaction_type_code === "change_ownership"
+
     const franchiseUpdates: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
     }
-    if (input.applicant_address !== undefined)
+    if (!isChangeOwnership && input.applicant_address !== undefined)
       franchiseUpdates.applicant_address = input.applicant_address
-    if (input.contact_number !== undefined)
+    if (!isChangeOwnership && input.contact_number !== undefined)
       franchiseUpdates.contact_number = input.contact_number
-    if (input.plate_number !== undefined)
+    if (!isChangeUnit && input.plate_number !== undefined)
       franchiseUpdates.plate_number = input.plate_number
     if (input.tricycle_body_number !== undefined)
       franchiseUpdates.tricycle_body_number = input.tricycle_body_number
@@ -287,6 +303,16 @@ export async function createFranchiseTransaction(
         transaction_type_id: transactionType.id,
         due_date: input.due_date || null,
         created_by: user.id,
+        new_motor_number: isChangeUnit ? input.new_motor_number : null,
+        new_chassis_number: isChangeUnit ? input.new_chassis_number : null,
+        new_plate_number: isChangeUnit ? input.new_plate_number || null : null,
+        new_applicant_name: isChangeOwnership ? input.new_applicant_name : null,
+        new_applicant_address: isChangeOwnership
+          ? input.new_applicant_address || null
+          : null,
+        new_contact_number: isChangeOwnership
+          ? input.new_contact_number || null
+          : null,
       })
       .select("id")
       .single()
@@ -539,22 +565,24 @@ export async function updateApplicationStatus(
       updateData.granted_at = grantedAt.toISOString()
     }
 
-    const { data: updated, error } = await supabase
+    const { error } = await supabase
       .schema("mtop")
       .from("mtop_applications")
       .update(updateData)
       .eq("id", id)
-      .select("franchise_id")
-      .single()
 
     if (error) return { error: error.message }
 
-    if (status === "granted" && grantedAt && updated?.franchise_id) {
+    // grant_franchise() reads the application row itself — its
+    // transaction_type's grant_effect, and any new_* values staged at filing
+    // (change of unit / change of ownership) — and branches accordingly. See
+    // 20260413000015_grant_effects.sql for what each of the seven effects does.
+    if (status === "granted" && grantedAt) {
       const { data: settings } = await getSystemSettings()
       const { error: rpcError } = await supabase
         .schema("mtop")
         .rpc("grant_franchise", {
-          p_franchise_id: updated.franchise_id,
+          p_application_id: id,
           p_granted_at: grantedAt.toISOString(),
           p_validity_years: settings.permit_validity_years,
         })

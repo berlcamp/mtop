@@ -1,7 +1,7 @@
 "use server"
 
 import { createClient } from "@/lib/supabase/server"
-import type { MtopStatus } from "@/types/database"
+import type { FranchiseStatus, MtopStatus } from "@/types/database"
 
 async function getAuthUser() {
   const supabase = await createClient()
@@ -20,6 +20,7 @@ export interface FranchiseSearchRow {
   tricycle_body_number: string | null
   route: string | null
   granted_until: string | null
+  franchise_status: FranchiseStatus
   // Where to send the user. Null when the franchise has no application at all,
   // which should not happen — a franchise is always created with one.
   latest_application_id: string | null
@@ -50,7 +51,7 @@ export async function searchFranchisesGlobal(
       .from("mtop_franchises")
       .select(
         `id, mtop_number, applicant_name, plate_number, tricycle_body_number,
-         route, granted_until,
+         route, granted_until, franchise_status,
          applications:mtop_applications(
            id, status, created_at,
            transaction_type:transaction_types(name)
@@ -70,6 +71,7 @@ export async function searchFranchisesGlobal(
       tricycle_body_number: string | null
       route: string | null
       granted_until: string | null
+      franchise_status: FranchiseStatus
       applications?: {
         id: string
         status: MtopStatus
@@ -93,6 +95,7 @@ export async function searchFranchisesGlobal(
           tricycle_body_number: f.tricycle_body_number,
           route: f.route,
           granted_until: f.granted_until,
+          franchise_status: f.franchise_status,
           latest_application_id: latest?.id ?? null,
           latest_status: latest?.status ?? null,
           latest_transaction: latest?.transaction_type?.name ?? null,
