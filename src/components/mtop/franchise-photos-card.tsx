@@ -1,6 +1,7 @@
 "use client"
 
-import { useRef, useState } from "react"
+import { useState } from "react"
+import { useRouter } from "next/navigation"
 import {
   Card,
   CardContent,
@@ -10,7 +11,9 @@ import {
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Camera, Loader2 } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Camera, Loader2, Pencil } from "lucide-react"
+import { InfoItem } from "@/components/shared/info-item"
 import { PhotoSlot } from "@/components/mtop/photo-capture"
 import {
   updateFranchisePhoto,
@@ -65,15 +68,21 @@ export function FranchisePhotosCard({
   const [busySlot, setBusySlot] = useState<Slot | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const [driver, setDriver] = useState({
+  const router = useRouter()
+
+  // What is on record, and what is being typed over it. Kept apart so the
+  // read-only view can update the moment a save lands, rather than waiting on
+  // the refresh to bring the new props round.
+  const [saved, setSaved] = useState({
     driver_name: driverName ?? "",
     driver_license_number: driverLicenseNumber ?? "",
     driver_address: driverAddress ?? "",
     make: make ?? "",
     day_off: dayOff ?? "",
   })
+  const [form, setForm] = useState(saved)
+  const [editing, setEditing] = useState(false)
   const [savingDriver, setSavingDriver] = useState(false)
-  const saveTimeout = useRef<NodeJS.Timeout | null>(null)
 
   async function removeStoredPhoto(url: string | null) {
     if (!url) return
@@ -149,38 +158,66 @@ export function FranchisePhotosCard({
     }
   }
 
-  function handleDriverChange(field: keyof typeof driver, value: string) {
-    const next = { ...driver, [field]: value }
-    setDriver(next)
+  function set(field: keyof typeof form, value: string) {
+    setForm((prev) => ({ ...prev, [field]: value }))
+  }
 
-    // Debounced save, same pattern as the document remarks field.
-    if (saveTimeout.current) clearTimeout(saveTimeout.current)
-    saveTimeout.current = setTimeout(async () => {
-      setSavingDriver(true)
-      setError(null)
-      const result = await updateFranchiseDriverDetails(
-        franchiseId,
-        applicationId,
-        next
-      )
-      if (result.error) setError(result.error)
+  function startEditing() {
+    // Always open on what is currently on record, not on whatever was typed
+    // and abandoned last time.
+    setForm(saved)
+    setError(null)
+    setEditing(true)
+  }
+
+  async function handleSaveDriver() {
+    setSavingDriver(true)
+    setError(null)
+
+    const result = await updateFranchiseDriverDetails(
+      franchiseId,
+      applicationId,
+      form
+    )
+
+    if (result.error) {
+      setError(result.error)
       setSavingDriver(false)
-    }, 800)
+      return
+    }
+
+    setSaved(form)
+    setSavingDriver(false)
+    setEditing(false)
+    router.refresh()
   }
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-lg flex items-center gap-2">
-          <Camera className="h-4 w-4" />
-          Photos &amp; Card Details
-          {savingDriver && (
-            <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+        <div className="flex items-start justify-between gap-3">
+          <div className="space-y-1">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Camera className="h-4 w-4" />
+              Photos &amp; Card Details
+            </CardTitle>
+            <CardDescription>
+              Portraits and driver information used to generate the Franchise
+              Card.
+            </CardDescription>
+          </div>
+          {canEdit && !editing && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={startEditing}
+            >
+              <Pencil className="mr-2 h-3.5 w-3.5" />
+              Edit
+            </Button>
           )}
-        </CardTitle>
-        <CardDescription>
-          Portraits and driver information used to generate the Franchise Card.
-        </CardDescription>
+        </div>
       </CardHeader>
       <CardContent className="space-y-6">
         {error && <p className="text-sm text-destructive">{error}</p>}
@@ -204,74 +241,103 @@ export function FranchisePhotosCard({
           />
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-1.5">
-            <Label htmlFor="driver_name" className="text-xs">
-              Driver Name
-            </Label>
-            <Input
-              id="driver_name"
-              value={driver.driver_name}
-              onChange={(e) => handleDriverChange("driver_name", e.target.value)}
-              disabled={!canEdit}
-              placeholder="Full name"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="driver_license_number" className="text-xs">
-              Driver&apos;s License No.
-            </Label>
-            <Input
-              id="driver_license_number"
-              value={driver.driver_license_number}
-              onChange={(e) =>
-                handleDriverChange("driver_license_number", e.target.value)
-              }
-              disabled={!canEdit}
-              placeholder="License number"
-              className="font-mono"
-            />
-          </div>
-          <div className="space-y-1.5 sm:col-span-2">
-            <Label htmlFor="driver_address" className="text-xs">
-              Driver Address
-            </Label>
-            <Input
-              id="driver_address"
-              value={driver.driver_address}
-              onChange={(e) =>
-                handleDriverChange("driver_address", e.target.value)
-              }
-              disabled={!canEdit}
-              placeholder="Address"
-            />
-          </div>
+        {editing ? (
+          <>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="driver_name">Driver Name</Label>
+                <Input
+                  id="driver_name"
+                  value={form.driver_name}
+                  onChange={(e) => set("driver_name", e.target.value)}
+                  disabled={savingDriver}
+                  placeholder="Full name"
+                />
+              </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="make" className="text-xs">
-              Make
-            </Label>
-            <Input
-              id="make"
-              value={driver.make}
-              onChange={(e) => handleDriverChange("make", e.target.value)}
-              disabled={!canEdit}
-              placeholder="e.g. Kawasaki"
+              <div className="space-y-2">
+                <Label htmlFor="driver_license_number">
+                  Driver&apos;s License No.
+                </Label>
+                <Input
+                  id="driver_license_number"
+                  value={form.driver_license_number}
+                  onChange={(e) =>
+                    set("driver_license_number", e.target.value)
+                  }
+                  disabled={savingDriver}
+                  placeholder="License number"
+                  className="font-mono"
+                />
+              </div>
+
+              <div className="space-y-2 sm:col-span-2">
+                <Label htmlFor="driver_address">Driver Address</Label>
+                <Input
+                  id="driver_address"
+                  value={form.driver_address}
+                  onChange={(e) => set("driver_address", e.target.value)}
+                  disabled={savingDriver}
+                  placeholder="Address"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="make">Make</Label>
+                <Input
+                  id="make"
+                  value={form.make}
+                  onChange={(e) => set("make", e.target.value)}
+                  disabled={savingDriver}
+                  placeholder="e.g. Kawasaki"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="day_off">Day Off</Label>
+                <Input
+                  id="day_off"
+                  value={form.day_off}
+                  onChange={(e) => set("day_off", e.target.value)}
+                  disabled={savingDriver}
+                  placeholder="e.g. Every Tuesday and Sunday"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <Button onClick={handleSaveDriver} disabled={savingDriver}>
+                {savingDriver && (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                )}
+                Save Changes
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setEditing(false)}
+                disabled={savingDriver}
+              >
+                Cancel
+              </Button>
+            </div>
+          </>
+        ) : (
+          <dl className="grid gap-4 sm:grid-cols-2">
+            <InfoItem label="Driver Name" value={saved.driver_name} />
+            <InfoItem
+              label="Driver's License No."
+              value={saved.driver_license_number}
+              mono
             />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="day_off" className="text-xs">
-              Day Off
-            </Label>
-            <Input
-              id="day_off"
-              value={driver.day_off}
-              onChange={(e) => handleDriverChange("day_off", e.target.value)}
-              disabled={!canEdit}
-              placeholder="e.g. Every Tuesday and Sunday"
+            <InfoItem
+              label="Driver Address"
+              value={saved.driver_address}
+              className="sm:col-span-2"
             />
-          </div>
-        </div>
+            <InfoItem label="Make" value={saved.make} />
+            <InfoItem label="Day Off" value={saved.day_off} />
+          </dl>
+        )}
       </CardContent>
     </Card>
   )
