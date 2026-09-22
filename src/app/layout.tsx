@@ -1,19 +1,31 @@
 import type { Metadata } from "next"
-import { Plus_Jakarta_Sans, Geist_Mono } from "next/font/google"
+import localFont from "next/font/local"
 import { Toaster } from "sonner"
 import { ThemeProvider } from "next-themes"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { NavigationProgress } from "@/components/layout/navigation-progress"
 import "./globals.css"
 
-const jakartaSans = Plus_Jakarta_Sans({
+// Self-hosted from ./fonts rather than next/font/google: the Google loader
+// downloads the .woff2 from fonts.gstatic.com during the build, which makes
+// every deployment depend on that fetch succeeding. See ./fonts/README.md.
+const jakartaSans = localFont({
+  src: "./fonts/PlusJakartaSans-Variable.woff2",
+  weight: "200 800",
+  display: "swap",
   variable: "--font-sans",
-  subsets: ["latin"],
+  fallback: ["system-ui", "-apple-system", "Segoe UI", "sans-serif"],
 })
 
-const geistMono = Geist_Mono({
+const geistMono = localFont({
+  src: "./fonts/GeistMono-Variable.woff2",
+  weight: "100 900",
+  display: "swap",
   variable: "--font-geist-mono",
-  subsets: ["latin"],
+  // Arial's metrics are the only sans option and would size a monospace
+  // fallback badly, so no size-adjust is better than the wrong one.
+  adjustFontFallback: false,
+  fallback: ["ui-monospace", "SFMono-Regular", "Menlo", "monospace"],
 })
 
 export const metadata: Metadata = {
