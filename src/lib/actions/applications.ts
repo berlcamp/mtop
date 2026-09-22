@@ -12,6 +12,7 @@ import {
   findCoOwnerMarker,
   SINGLE_OPERATOR_MESSAGE,
 } from "@/lib/operator-name"
+import { reopenTargetStage } from "@/lib/application-flow"
 import type {
   MtopStatus,
   TransactionType,
@@ -744,5 +745,80 @@ export async function updateApplicationStatus(
     return { error: null }
   } catch (e) {
     return { error: (e as Error).message }
+  }
+}
+
+/**
+ * Puts a returned application back into the pipeline.
+ *
+ * A return is a pause, not a rejection — the application keeps its cleared
+ * requirements, inspection, assessment and payments, and still counts as the
+ * franchise's one in-flight application (see
+ * idx_applications_one_in_flight_per_franchise), so reopening changes nothing
+ * but the status.
+ *
+ * The target stage is derived here rather than passed in: the caller doesn't
+ * get to choose where an application re-enters the flow.
+ */
+export async function reopenApplication(id: string, remarks?: string) {
+  try {
+    const { supabase, user } = await getAuthUser()
+
+    const { data: application, error: appError } = await supabase
+      .schema("mtop")
+      .from("mtop_applications")
+      .select("id, status")
+      .eq("id", id)
+      .single()
+
+    if (appError) return { error: appError.message, data: null }
+    if (application.status !== "returned") {
+      return {
+        error: "Only a returned application can be reopened.",
+        data: null,
+      }
+    }
+
+    const { data: logs, error: logsError } = await supabase
+      .schema("mtop")
+      .from("approval_logs")
+      .select("stage, created_at")
+      .eq("application_id", id)
+
+    if (logsError) return { error: logsError.message, data: null }
+
+    const stage = reopenTargetStage(
+      (logs ?? []) as { stage: MtopStatus; created_at: string }[]
+    )
+
+    const { error: updateError } = await supabase
+      .schema("mtop")
+      .from("mtop_applications")
+      .update({ status: stage })
+      .eq("id", id)
+
+    if (updateError) return { error: updateError.message, data: null }
+
+    // Logged as a forward into the stage it resumes at — approval_logs.action
+    // has no "reopened" value, and the returned entry directly above it in the
+    // timeline already says what this is answering.
+    const { error: logError } = await supabase
+      .schema("mtop")
+      .from("approval_logs")
+      .insert({
+        application_id: id,
+        stage,
+        action: "forwarded",
+        actor_id: user.id,
+        remarks: remarks?.trim() || null,
+      })
+
+    if (logError) return { error: logError.message, data: null }
+
+    revalidatePath("/dashboard/applications")
+    revalidatePath(`/dashboard/applications/${id}`)
+    return { error: null, data: { status: stage } }
+  } catch (e) {
+    return { error: (e as Error).message, data: null }
   }
 }

@@ -51,7 +51,9 @@ All database mutations are **Server Actions** in `src/lib/actions/`. Each action
 Application status flows through these stages in order:
 `for_verification` → `for_inspection` → `for_assessment` → `for_approval` → `granted`
 
-Side exits: `rejected`, `returned` (can re-enter the flow).
+Side exits: `rejected` (terminal) and `returned`.
+
+A return pauses an application without unwinding any of its work — cleared requirements, inspection result, assessment and payments all stay. `reopenApplication()` puts it back at the stage it was returned from, derived server-side by `reopenTargetStage()` (`src/lib/application-flow.ts`) from the newest `approval_logs` row naming a pipeline stage; the client never names the target stage, it only labels the button. Reopening is logged as a `forwarded` entry, since `approval_logs.action` has no `reopened` value. A returned application still counts as the franchise's one in-flight application, so reopening can't collide with `idx_applications_one_in_flight_per_franchise`. The button is gated on the permission for the stage being resumed (`stagePermission()`), which is the same permission that allowed the return in the first place.
 
 Every status change inserts a row into `mtop.approval_logs`.
 

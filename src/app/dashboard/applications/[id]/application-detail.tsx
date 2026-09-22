@@ -39,13 +39,19 @@ import {
   ArrowRight,
   Building2,
   History,
+  RotateCcw,
 } from "lucide-react"
 import { format } from "date-fns"
-import { updateApplicationStatus } from "@/lib/actions/applications"
+import { updateApplicationStatus, reopenApplication } from "@/lib/actions/applications"
 import { checkNegativeList } from "@/lib/actions/requirements"
 import { usePermissions } from "@/lib/hooks/use-permissions"
 import { getExpirationStatus } from "@/lib/utils/permit-expiration"
 import { isBlocking } from "@/lib/requirements"
+import {
+  reopenTargetStage,
+  stageName,
+  stagePermission,
+} from "@/lib/application-flow"
 import { ExpirationBadge } from "@/components/shared/expiration-badge"
 import type { MtopStatus } from "@/types/database"
 import type { FranchiseHistoryEvent } from "@/lib/audit"
@@ -104,6 +110,27 @@ export function ApplicationDetail({
       action,
       remarks || undefined
     )
+
+    if (result.error) {
+      setError(result.error)
+      setLoading(false)
+      return
+    }
+
+    router.refresh()
+    setLoading(false)
+    setRemarks("")
+  }
+
+  // A returned application resumes at the stage it was returned from; the
+  // server derives that stage itself, this only needs to say so on the button.
+  const reopenStage = reopenTargetStage(application.approval_logs ?? [])
+
+  async function handleReopen() {
+    setLoading(true)
+    setError(null)
+
+    const result = await reopenApplication(application.id, remarks || undefined)
 
     if (result.error) {
       setError(result.error)
@@ -227,6 +254,39 @@ export function ApplicationDetail({
               </Alert>
             )}
           </>
+        )
+      })()}
+
+      {/* Returned Banner — carries the reason forward, since the whole point
+          of a return is the deficiency written in the remarks. */}
+      {application.status === "returned" && (() => {
+        const lastReturn = (application.approval_logs ?? []).find(
+          (log: { action: string }) => log.action === "returned"
+        )
+
+        return (
+          <Alert className="border-orange-200 bg-orange-50">
+            <AlertTriangle className="h-4 w-4 text-orange-600" />
+            <AlertTitle className="text-orange-800">
+              Application Returned
+            </AlertTitle>
+            <AlertDescription className="text-orange-700">
+              {lastReturn?.remarks && (
+                <span className="block italic">
+                  &ldquo;{lastReturn.remarks}&rdquo;
+                </span>
+              )}
+              <span className="block">
+                Returned
+                {lastReturn?.actor?.full_name && ` by ${lastReturn.actor.full_name}`}
+                {lastReturn?.created_at &&
+                  ` on ${format(new Date(lastReturn.created_at), "MMMM d, yyyy")}`}
+                . Reopen it below once the deficiency has been settled — it
+                keeps everything already cleared and resumes at{" "}
+                {stageName(reopenStage)}.
+              </span>
+            </AlertDescription>
+          </Alert>
         )
       })()}
 
@@ -434,6 +494,8 @@ export function ApplicationDetail({
             assessment={application.assessment}
             payments={application.payments}
             isOnNegativeList={isOnNegativeList}
+            reopenStage={reopenStage}
+            onReopen={handleReopen}
           />
         </div>
 
@@ -695,6 +757,8 @@ function StageActions({
   assessment,
   payments,
   isOnNegativeList,
+  reopenStage,
+  onReopen,
 }: {
   status: MtopStatus
   can: (p: string) => boolean
@@ -715,6 +779,8 @@ function StageActions({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   payments: any[]
   isOnNegativeList: boolean
+  reopenStage: MtopStatus
+  onReopen: () => void
 }) {
   // Determine which actions are available based on current status and permissions
   let title = ""
@@ -724,6 +790,7 @@ function StageActions({
   let canForward = false
   let canReturn = true
   let isGrantAction = false
+  let isReopen = false
 
   switch (status) {
     case "for_verification":
@@ -772,6 +839,18 @@ function StageActions({
       // Use "approved" action for granting instead of "forwarded"
       isGrantAction = true
       break
+    case "returned":
+      // A return parks the application without unwinding any of its work, so
+      // reopening resumes at the stage it left rather than restarting it.
+      title = "Returned Application"
+      description = `Waiting on the operator. Reopening resumes at ${stageName(
+        reopenStage
+      )} with everything already cleared left as it is.`
+      forwardLabel = `Reopen at ${stageName(reopenStage)}`
+      canForward = can(stagePermission(reopenStage))
+      canReturn = false
+      isReopen = true
+      break
     default:
       return null
   }
@@ -789,7 +868,7 @@ function StageActions({
         {/* Remarks */}
         <div className="space-y-2">
           <label className="text-sm font-medium" htmlFor="remarks">
-            Remarks (required for return)
+            {isReopen ? "Remarks (optional)" : "Remarks (required for return)"}
           </label>
           <textarea
             id="remarks"
@@ -802,6 +881,17 @@ function StageActions({
 
         {/* Action buttons */}
         <div className="flex gap-2">
+          {isReopen && canForward && (
+            <Button onClick={onReopen} disabled={loading}>
+              {loading ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <RotateCcw className="mr-2 h-4 w-4" />
+              )}
+              {forwardLabel}
+            </Button>
+          )}
+
           {forwardStatus && canForward && (
             <Button
               onClick={() =>
@@ -844,6 +934,13 @@ function StageActions({
         </div>
 
         {/* Hints */}
+        {isReopen && !canForward && (
+          <p className="text-xs text-muted-foreground">
+            This application resumes at {stageName(reopenStage)}, which you
+            do not have permission to act on. Ask whoever handles that stage to
+            reopen it.
+          </p>
+        )}
         {status === "for_verification" && isOnNegativeList && (
           <p className="text-xs text-destructive">
             Cannot forward — applicant is on the negative list.
