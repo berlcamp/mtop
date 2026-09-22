@@ -176,6 +176,10 @@ npx supabase gen types typescript --project-id <id> > src/types/database.ts
 
 `usePermissions()` hook (`src/lib/hooks/use-permissions.ts`) fetches the current user's role codes from `mtop.user_roles → mtop.role_permissions → mtop.permissions` and exposes `can(code)`, `canAny(...codes)`, `canAll(...codes)`.
 
+That hook only decides what to **render**. A server action that trusts it isn't gated at all, since actions are callable directly — so actions that matter re-check with `hasPermission()` (`src/lib/permissions.ts`, a plain helper rather than a `"use server"` module, which would force every export to be an action). Filing is gated this way: `createNewFranchiseApplication` and `createFranchiseTransaction` both require `application.create`, which is seeded to the verification officer and the administrator only. The New Application button is hidden from everyone else and `/dashboard/applications/new` says so rather than showing a form that cannot be submitted.
+
+Most other actions in `src/lib/actions/` still check only that the caller is signed in, including every stage transition in `updateApplicationStatus()`. That is a real gap, not a decision.
+
 `useProfile()` is provided by `ProfileProvider` in the dashboard layout — gives access to `full_name`, `email`, and `avatar_url`.
 
 ### Component Structure

@@ -1,9 +1,7 @@
 import { Suspense } from "react"
-import Link from "next/link"
 import { PageHeader } from "@/components/layout/page-header"
-import { Button } from "@/components/ui/button"
-import { Plus } from "lucide-react"
 import { ApplicationsTable } from "./applications-table"
+import { NewApplicationButton } from "./new-application-button"
 
 export default function ApplicationsPage({
   searchParams,
@@ -15,16 +13,7 @@ export default function ApplicationsPage({
       <PageHeader
         title="Applications"
         subtitle="Manage MTOP renewal applications"
-        actions={
-          <Button
-            size="sm"
-            nativeButton={false}
-            render={<Link href="/dashboard/applications/new" />}
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            New Application
-          </Button>
-        }
+        actions={<NewApplicationButton />}
       />
 
       <Suspense

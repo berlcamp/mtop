@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
+import { hasPermission } from "@/lib/permissions"
 
 async function getAuthUser() {
   const supabase = await createClient()
@@ -13,34 +14,6 @@ async function getAuthUser() {
 }
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>
-
-async function hasPermission(
-  supabase: SupabaseServerClient,
-  userId: string,
-  code: string
-) {
-  const { data: userRoles } = await supabase
-    .schema("mtop")
-    .from("user_roles")
-    .select("role_id")
-    .eq("user_id", userId)
-
-  if (!userRoles || userRoles.length === 0) return false
-
-  const { data: rolePerms } = await supabase
-    .schema("mtop")
-    .from("role_permissions")
-    .select("permission:permissions(code)")
-    .in(
-      "role_id",
-      userRoles.map((ur: { role_id: string }) => ur.role_id)
-    )
-
-  return (rolePerms ?? []).some(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (rp: any) => (rp.permission as { code: string } | null)?.code === code
-  )
-}
 
 /**
  * The franchise really does belong to this application, and the permit has not

@@ -20,6 +20,7 @@ import {
 } from "@/lib/unit-identifier"
 import { reopenTargetStage } from "@/lib/application-flow"
 import { composeAddress } from "@/lib/address"
+import { hasPermission } from "@/lib/permissions"
 import type {
   MtopStatus,
   TransactionType,
@@ -44,6 +45,24 @@ async function getAuthUser() {
 }
 
 type Supabase = Awaited<ReturnType<typeof getAuthUser>>["supabase"]
+
+/**
+ * Filing is the verification officer's job, and the administrator's. Everyone
+ * else — inspector, assessor, cashier, approver — works applications that
+ * already exist.
+ *
+ * Checked here and not only on the button: a server action is callable
+ * directly, so a UI-only gate is not a gate. The permission itself is seeded
+ * to exactly those two roles (20260413000002, 20260413000008).
+ */
+const CREATE_DENIED =
+  "You do not have permission to file applications. Only a verification officer or an administrator can."
+
+async function assertCanCreate(supabase: Supabase, userId: string) {
+  return (await hasPermission(supabase, userId, "application.create"))
+    ? null
+    : CREATE_DENIED
+}
 
 async function resolveTransactionType(
   supabase: Supabase,
@@ -234,6 +253,9 @@ export async function createNewFranchiseApplication(
   try {
     const { supabase, user } = await getAuthUser()
 
+    const denied = await assertCanCreate(supabase, user.id)
+    if (denied) return { error: denied, data: null }
+
     const { error: typeError, data: transactionType } =
       await resolveTransactionType(supabase, "new_franchise")
     if (typeError || !transactionType)
@@ -367,6 +389,10 @@ export async function createFranchiseTransaction(
 ) {
   try {
     const { supabase, user } = await getAuthUser()
+
+    const denied = await assertCanCreate(supabase, user.id)
+    if (denied) return { error: denied, data: null }
+
     const { data: settings } = await getSystemSettings()
 
     const { error: typeError, data: transactionType } =
