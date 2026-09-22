@@ -46,6 +46,7 @@ import { updateApplicationStatus, reopenApplication } from "@/lib/actions/applic
 import { checkNegativeList } from "@/lib/actions/requirements"
 import { usePermissions } from "@/lib/hooks/use-permissions"
 import { getExpirationStatus } from "@/lib/utils/permit-expiration"
+import { cn } from "@/lib/utils"
 import { isBlocking } from "@/lib/requirements"
 import {
   reopenTargetStage,
@@ -72,6 +73,9 @@ export function ApplicationDetail({
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [remarks, setRemarks] = useState("")
+  // Set when a return was attempted with the field empty, so the field itself
+  // shows the problem rather than only the alert at the top of the page.
+  const [remarksMissing, setRemarksMissing] = useState(false)
   const [negativeListMatches, setNegativeListMatches] = useState<
     { id: string; applicant_name: string; reason: string }[]
   >([])
@@ -97,10 +101,14 @@ export function ApplicationDetail({
     action: "approved" | "rejected" | "returned" | "forwarded"
   ) {
     if (action === "returned" && !remarks.trim()) {
-      setError("Remarks are required when returning an application.")
+      setRemarksMissing(true)
+      setError(
+        "Remarks are required when returning an application — say what needs to be corrected."
+      )
       return
     }
 
+    setRemarksMissing(false)
     setLoading(true)
     setError(null)
 
@@ -492,7 +500,11 @@ export function ApplicationDetail({
             can={can}
             loading={loading}
             remarks={remarks}
-            onRemarksChange={setRemarks}
+            onRemarksChange={(value) => {
+              setRemarks(value)
+              if (remarksMissing && value.trim()) setRemarksMissing(false)
+            }}
+            remarksMissing={remarksMissing}
             onAction={handleStatusChange}
             blockingCleared={blockingCleared}
             blockingTotal={blockingItems.length}
@@ -756,6 +768,7 @@ function StageActions({
   loading,
   remarks,
   onRemarksChange,
+  remarksMissing,
   onAction,
   blockingCleared,
   blockingTotal,
@@ -772,6 +785,7 @@ function StageActions({
   loading: boolean
   remarks: string
   onRemarksChange: (v: string) => void
+  remarksMissing: boolean
   onAction: (
     status: MtopStatus,
     action: "approved" | "rejected" | "returned" | "forwarded"
@@ -875,15 +889,39 @@ function StageActions({
         {/* Remarks */}
         <div className="space-y-2">
           <label className="text-sm font-medium" htmlFor="remarks">
-            {isReopen ? "Remarks (optional)" : "Remarks (required for return)"}
+            {isReopen ? (
+              "Remarks (optional)"
+            ) : (
+              <>
+                Remarks{" "}
+                <span className="text-muted-foreground font-normal">
+                  — required when returning
+                </span>
+              </>
+            )}
           </label>
           <textarea
             id="remarks"
-            className="flex w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 min-h-[80px]"
-            placeholder="Add remarks..."
+            aria-invalid={remarksMissing}
+            className={cn(
+              "flex w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 min-h-[80px]",
+              remarksMissing &&
+                "border-destructive ring-3 ring-destructive/20"
+            )}
+            placeholder={
+              isReopen
+                ? "Add remarks..."
+                : "What does the applicant need to correct?"
+            }
             value={remarks}
             onChange={(e) => onRemarksChange(e.target.value)}
           />
+          {remarksMissing && (
+            <p className="text-xs text-destructive">
+              Say what needs to be corrected — the applicant sees this as the
+              reason the application came back.
+            </p>
+          )}
         </div>
 
         {/* Action buttons */}

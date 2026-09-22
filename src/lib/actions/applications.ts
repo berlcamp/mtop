@@ -712,6 +712,17 @@ export async function updateApplicationStatus(
   try {
     const { supabase, user } = await getAuthUser()
 
+    // A return is the office telling the operator what to come back with, so
+    // it is worth nothing without the reason. The form checks this too, for
+    // an immediate answer; enforcing it here is what makes it a rule rather
+    // than a suggestion, for this and any future caller.
+    if (action === "returned" && !remarks?.trim()) {
+      return {
+        error:
+          "Remarks are required when returning an application — say what needs to be corrected.",
+      }
+    }
+
     const updateData: Record<string, unknown> = { status }
     let grantedAt: Date | null = null
     if (status === "granted") {
