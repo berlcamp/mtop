@@ -762,6 +762,9 @@ function StageActions({
   let canReturn = true
   let isGrantAction = false
   let isReopen = false
+  // Permission to act at this stage at all, before any data prerequisite. A
+  // viewer without it gets an explanation instead of a form they cannot submit.
+  let canAct = false
 
   switch (status) {
     case "for_verification":
@@ -779,6 +782,7 @@ function StageActions({
         blockingCleared === blockingTotal &&
         !isOnNegativeList
       canReturn = can("application.verify")
+      canAct = can("application.verify")
       break
     case "for_inspection":
       title = "Inspection Actions"
@@ -788,6 +792,7 @@ function StageActions({
       canForward =
         can("inspection.conduct") && inspection?.result === "passed"
       canReturn = can("inspection.conduct")
+      canAct = can("inspection.conduct")
       break
     case "for_assessment":
       title = "Assessment Actions"
@@ -799,6 +804,9 @@ function StageActions({
         assessment?.approved_at &&
         payments?.length > 0
       canReturn = can("assessment.create")
+      // Two offices share this stage: the assessment officer prices it, the
+      // cashier takes the money and forwards it.
+      canAct = can("payment.record") || can("assessment.create")
       break
     case "for_approval":
       title = "Approval Actions"
@@ -807,6 +815,7 @@ function StageActions({
       forwardStatus = "granted"
       canForward = can("application.grant")
       canReturn = can("application.approve")
+      canAct = can("application.grant") || can("application.approve")
       // Use "approved" action for granting instead of "forwarded"
       isGrantAction = true
       break
@@ -820,10 +829,38 @@ function StageActions({
       forwardLabel = `Reopen at ${stageName(reopenStage)}`
       canForward = can(stagePermission(reopenStage))
       canReturn = false
+      canAct = canForward
       isReopen = true
       break
     default:
       return null
+  }
+
+  // Nothing here is actionable without the stage's permission — the remarks
+  // box exists only to accompany an action, so showing it alone reads as a
+  // form that lost its button.
+  if (!canAct) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Hash className="h-4 w-4" />
+            {title}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground">
+            {isReopen
+              ? `This application resumes at ${stageName(
+                  reopenStage
+                )}, which you do not have permission to act on. Ask whoever handles that stage to reopen it.`
+              : `This application is at ${stageName(
+                  status
+                )}. You do not have permission to act on that stage, so there is nothing to do here.`}
+          </p>
+        </CardContent>
+      </Card>
+    )
   }
 
   return (
@@ -929,13 +966,6 @@ function StageActions({
         </div>
 
         {/* Hints */}
-        {isReopen && !canForward && (
-          <p className="text-xs text-muted-foreground">
-            This application resumes at {stageName(reopenStage)}, which you
-            do not have permission to act on. Ask whoever handles that stage to
-            reopen it.
-          </p>
-        )}
         {status === "for_verification" && isOnNegativeList && (
           <p className="text-xs text-destructive">
             Cannot forward — applicant is on the negative list.
@@ -960,6 +990,19 @@ function StageActions({
               Inspection failed. Return to applicant for corrections.
             </p>
           )}
+        {/* Assessment is the one stage two offices share, so say which half is
+            outstanding rather than leaving the missing button unexplained. */}
+        {status === "for_assessment" && !canForward && (
+          <p className="text-xs text-muted-foreground">
+            {!can("payment.record")
+              ? "The cashier forwards this to approval once the payment is recorded."
+              : !assessment
+                ? "No fee assessment has been created yet."
+                : !assessment.approved_at
+                  ? "The fee assessment has to be approved before this can be forwarded."
+                  : "Record the payment before forwarding."}
+          </p>
+        )}
       </CardContent>
     </Card>
   )
