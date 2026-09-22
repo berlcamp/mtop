@@ -48,11 +48,13 @@ export function NewFranchiseForm({
   // watch(), which React Compiler refuses to memoize around.
   const [operatorName, setOperatorName] = useState("")
 
-  // Same story for the two numbers that identify the tricycle citywide: a body
-  // or plate number already on another active franchise is refused by the
-  // database, so say so here rather than on submit.
+  // Same story for the four numbers that identify the tricycle citywide: a
+  // body, plate, motor or chassis number already on another active franchise
+  // is refused by the database, so say so here rather than on submit.
   const [bodyNumber, setBodyNumber] = useState("")
   const [plateNumber, setPlateNumber] = useState("")
+  const [motorNumber, setMotorNumber] = useState("")
+  const [chassisNumber, setChassisNumber] = useState("")
 
   const {
     register,
@@ -80,8 +82,15 @@ export function NewFranchiseForm({
   const applicantNameField = register("applicant_name")
   const bodyNumberField = register("tricycle_body_number")
   const plateNumberField = register("plate_number")
+  const motorNumberField = register("motor_number")
+  const chassisNumberField = register("chassis_number")
 
-  const unitConflicts = useUnitIdentifierCheck({ bodyNumber, plateNumber })
+  const unitConflicts = useUnitIdentifierCheck({
+    bodyNumber,
+    plateNumber,
+    motorNumber,
+    chassisNumber,
+  })
 
   useEffect(() => {
     const name = operatorName?.trim() ?? ""
@@ -282,30 +291,50 @@ export function NewFranchiseForm({
                   <Label htmlFor="motor_number">Motor Number</Label>
                   <Input
                     id="motor_number"
-                    placeholder="Motor/Engine number"
-                    {...register("motor_number")}
-                    aria-invalid={!!errors.motor_number}
+                    placeholder="e.g., ABC123456"
+                    {...motorNumberField}
+                    onChange={(e) => {
+                      motorNumberField.onChange(e)
+                      setMotorNumber(e.target.value)
+                    }}
+                    aria-invalid={
+                      !!errors.motor_number || !!unitConflicts.motor_number
+                    }
                   />
-                  {errors.motor_number && (
+                  {errors.motor_number ? (
                     <p className="text-xs text-destructive">
                       {errors.motor_number.message}
                     </p>
-                  )}
+                  ) : unitConflicts.motor_number ? (
+                    <p className="text-xs text-destructive">
+                      {unitConflicts.motor_number}
+                    </p>
+                  ) : null}
                 </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="chassis_number">Chassis Number</Label>
                   <Input
                     id="chassis_number"
-                    placeholder="Chassis/Frame number"
-                    {...register("chassis_number")}
-                    aria-invalid={!!errors.chassis_number}
+                    placeholder="e.g., XYZ987654"
+                    {...chassisNumberField}
+                    onChange={(e) => {
+                      chassisNumberField.onChange(e)
+                      setChassisNumber(e.target.value)
+                    }}
+                    aria-invalid={
+                      !!errors.chassis_number || !!unitConflicts.chassis_number
+                    }
                   />
-                  {errors.chassis_number && (
+                  {errors.chassis_number ? (
                     <p className="text-xs text-destructive">
                       {errors.chassis_number.message}
                     </p>
-                  )}
+                  ) : unitConflicts.chassis_number ? (
+                    <p className="text-xs text-destructive">
+                      {unitConflicts.chassis_number}
+                    </p>
+                  ) : null}
                 </div>
 
                 <div className="space-y-2">

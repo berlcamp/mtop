@@ -287,13 +287,13 @@ export async function updateFranchiseUnitDetails(
       .eq("id", franchiseId)
 
     if (error) {
-      // A partial unique index guards body and plate numbers across active
-      // franchises; say which record is in the way rather than surfacing a
-      // raw duplicate-key error.
+      // Partial unique indexes guard the body, plate, motor and chassis
+      // numbers across active franchises; say so rather than surfacing a raw
+      // duplicate-key error.
       if (error.code === "23505") {
         return {
           error:
-            "Another active franchise already uses one of these numbers. Check the body and plate numbers.",
+            "Another active franchise already uses one of these numbers. Check the body, plate, motor and chassis numbers.",
         }
       }
       return { error: error.message }

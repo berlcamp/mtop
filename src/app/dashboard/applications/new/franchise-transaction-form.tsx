@@ -47,15 +47,17 @@ export function FranchiseTransactionForm({
   const isChangeUnit = transactionType.code === "change_unit"
   const isChangeOwnership = transactionType.code === "change_ownership"
 
-  // Body and plate number are unique across active franchises. Tracked off
-  // register()'s own onChange rather than watch(), which React Compiler
-  // refuses to memoize around. This franchise is excluded from the lookup, so
-  // leaving its own numbers alone never flags them.
+  // Body, plate, motor and chassis are unique across active franchises.
+  // Tracked off register()'s own onChange rather than watch(), which React
+  // Compiler refuses to memoize around. This franchise is excluded from the
+  // lookup, so leaving its own numbers alone never flags them.
   const [bodyNumber, setBodyNumber] = useState(
     franchise.tricycle_body_number ?? ""
   )
   // On a change of unit the plate under test is the staged one — the current
   // plate belongs to the unit being replaced and is not editable here.
+  const [motorNumber, setMotorNumber] = useState("")
+  const [chassisNumber, setChassisNumber] = useState("")
   const [plateNumber, setPlateNumber] = useState(
     isChangeUnit ? "" : franchise.plate_number ?? ""
   )
@@ -86,12 +88,25 @@ export function FranchiseTransactionForm({
   const plateNumberField = register(
     isChangeUnit ? "new_plate_number" : "plate_number"
   )
+  // Motor and chassis are only editable on a change of unit, where they are
+  // the incoming unit's and staged until grant. On every other transaction
+  // they belong to the franchise and are not on this form at all.
+  const motorNumberField = register("new_motor_number")
+  const chassisNumberField = register("new_chassis_number")
 
   const unitConflicts = useUnitIdentifierCheck({
     bodyNumber,
     plateNumber,
+    motorNumber: isChangeUnit ? motorNumber : "",
+    chassisNumber: isChangeUnit ? chassisNumber : "",
     excludeFranchiseId: franchise.id,
-    plateLabel: isChangeUnit ? "New plate number" : undefined,
+    labels: isChangeUnit
+      ? {
+          plate_number: "New plate number",
+          motor_number: "New motor number",
+          chassis_number: "New chassis number",
+        }
+      : undefined,
   })
 
   async function onSubmit(data: FranchiseTransactionFormValues) {
@@ -325,28 +340,49 @@ export function FranchiseTransactionForm({
                     <Label htmlFor="new_motor_number">New Motor Number</Label>
                     <Input
                       id="new_motor_number"
-                      {...register("new_motor_number")}
-                      aria-invalid={!!errors.new_motor_number}
+                      {...motorNumberField}
+                      onChange={(e) => {
+                        motorNumberField.onChange(e)
+                        setMotorNumber(e.target.value)
+                      }}
+                      aria-invalid={
+                        !!errors.new_motor_number || !!unitConflicts.motor_number
+                      }
                     />
-                    {errors.new_motor_number && (
+                    {errors.new_motor_number ? (
                       <p className="text-xs text-destructive">
                         {errors.new_motor_number.message}
                       </p>
-                    )}
+                    ) : unitConflicts.motor_number ? (
+                      <p className="text-xs text-destructive">
+                        {unitConflicts.motor_number}
+                      </p>
+                    ) : null}
                   </div>
 
                   <div className="space-y-2">
                     <Label htmlFor="new_chassis_number">New Chassis Number</Label>
                     <Input
                       id="new_chassis_number"
-                      {...register("new_chassis_number")}
-                      aria-invalid={!!errors.new_chassis_number}
+                      {...chassisNumberField}
+                      onChange={(e) => {
+                        chassisNumberField.onChange(e)
+                        setChassisNumber(e.target.value)
+                      }}
+                      aria-invalid={
+                        !!errors.new_chassis_number ||
+                        !!unitConflicts.chassis_number
+                      }
                     />
-                    {errors.new_chassis_number && (
+                    {errors.new_chassis_number ? (
                       <p className="text-xs text-destructive">
                         {errors.new_chassis_number.message}
                       </p>
-                    )}
+                    ) : unitConflicts.chassis_number ? (
+                      <p className="text-xs text-destructive">
+                        {unitConflicts.chassis_number}
+                      </p>
+                    ) : null}
                   </div>
 
                   <div className="space-y-2">

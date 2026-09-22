@@ -1,16 +1,21 @@
 /**
- * Body- and plate-number rules, mirroring mtop.normalize_unit_identifier() in
+ * Unit-number rules, mirroring mtop.normalize_unit_identifier() in
  * 20260413000021_unique_unit_identifiers.sql.
  *
- * The database is what actually enforces uniqueness (two partial unique
- * indexes over active franchises). This copy exists so the forms can warn
+ * The database is what actually enforces uniqueness (four partial unique
+ * indexes over active franchises: body and plate from migration 21, motor and
+ * chassis from migration 23). This copy exists so the forms can warn
  * while the clerk is still typing, and so the server actions can return a
  * sentence naming the franchise in the way instead of a constraint violation.
  * If you change one side, change the other.
  */
 
 /** The field a conflict was found on, as the database reports it. */
-export type UnitIdentifierField = "tricycle_body_number" | "plate_number"
+export type UnitIdentifierField =
+  | "tricycle_body_number"
+  | "plate_number"
+  | "motor_number"
+  | "chassis_number"
 
 /** The franchise already using a body or plate number. */
 export type UnitIdentifierConflict = {
@@ -35,6 +40,20 @@ export function normalizeUnitIdentifier(value: string): string {
 const FIELD_LABEL: Record<UnitIdentifierField, string> = {
   tricycle_body_number: "Body number",
   plate_number: "Plate number",
+  motor_number: "Motor number",
+  chassis_number: "Chassis number",
+}
+
+/**
+ * Why the number can only be in one place — the body and plate are assigned,
+ * the motor and chassis are stamped on the unit by whoever built it, and a
+ * clerk faced with a refusal is better served by the reason than by the rule.
+ */
+const FIELD_REASON: Record<UnitIdentifierField, string> = {
+  tricycle_body_number: "Body and plate numbers identify one tricycle",
+  plate_number: "Body and plate numbers identify one tricycle",
+  motor_number: "A motor number belongs to one unit and never changes",
+  chassis_number: "A chassis number belongs to one unit and never changes",
 }
 
 /**
@@ -52,5 +71,5 @@ export function unitConflictMessage(
     : "a franchise whose application is still in progress"
 
   return `${label} ${conflict.value ?? ""}`.trim() +
-    ` is already on ${held} (${conflict.applicant_name}). Body and plate numbers identify one tricycle — check the number, or close that franchise first.`
+    ` is already on ${held} (${conflict.applicant_name}). ${FIELD_REASON[conflict.field]} — check the number, or close that franchise first.`
 }

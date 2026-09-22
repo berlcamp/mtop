@@ -16,6 +16,7 @@ import {
   normalizeUnitIdentifier,
   unitConflictMessage,
   type UnitIdentifierConflict,
+  type UnitIdentifierField,
 } from "@/lib/unit-identifier"
 import { reopenTargetStage } from "@/lib/application-flow"
 import { composeAddress } from "@/lib/address"
@@ -105,14 +106,24 @@ async function findOperatorsActiveFranchise(
  * Reports one row per clashing field, so a form can put each message under the
  * input it belongs to.
  */
+/** The four numbers that may only appear on one active franchise at a time. */
+type UnitNumbers = {
+  bodyNumber?: string | null
+  plateNumber?: string | null
+  motorNumber?: string | null
+  chassisNumber?: string | null
+}
+
 async function findUnitIdentifierConflicts(
   supabase: Supabase,
-  numbers: { bodyNumber?: string | null; plateNumber?: string | null },
+  numbers: UnitNumbers,
   excludeFranchiseId?: string
 ): Promise<UnitIdentifierConflict[]> {
   const body = numbers.bodyNumber ?? ""
   const plate = numbers.plateNumber ?? ""
-  if (!normalizeUnitIdentifier(body) && !normalizeUnitIdentifier(plate))
+  const motor = numbers.motorNumber ?? ""
+  const chassis = numbers.chassisNumber ?? ""
+  if (![body, plate, motor, chassis].some((v) => normalizeUnitIdentifier(v)))
     return []
 
   const { data } = await supabase
@@ -120,6 +131,8 @@ async function findUnitIdentifierConflicts(
     .rpc("find_unit_identifier_conflict", {
       p_body_number: body || null,
       p_plate_number: plate || null,
+      p_motor_number: motor || null,
+      p_chassis_number: chassis || null,
       p_exclude_franchise_id: excludeFranchiseId ?? null,
     })
 
@@ -127,12 +140,32 @@ async function findUnitIdentifierConflicts(
 }
 
 /**
- * The one conflict to report when a filing is refused. Body number comes first
- * when both clash, since that is the field the clerk fills first.
+ * The one conflict to report when a filing is refused, reported in the order
+ * the clerk fills the fields in, so the message points at the first thing they
+ * would look at rather than whichever query happened to match.
  */
+/**
+ * On a change of unit the number being tested is the incoming one, so
+ * "Plate number" alone would read as the plate already on the franchise.
+ * The body number is not staged — it stays with the franchise — so it keeps
+ * its own label.
+ */
+const STAGED_FIELD_LABEL: Partial<Record<UnitIdentifierField, string>> = {
+  plate_number: "New plate number",
+  motor_number: "New motor number",
+  chassis_number: "New chassis number",
+}
+
+const UNIT_FIELD_ORDER: UnitIdentifierField[] = [
+  "tricycle_body_number",
+  "plate_number",
+  "motor_number",
+  "chassis_number",
+]
+
 async function findUnitIdentifierConflict(
   supabase: Supabase,
-  numbers: { bodyNumber?: string | null; plateNumber?: string | null },
+  numbers: UnitNumbers,
   excludeFranchiseId?: string
 ): Promise<UnitIdentifierConflict | null> {
   const hits = await findUnitIdentifierConflicts(
@@ -140,7 +173,11 @@ async function findUnitIdentifierConflict(
     numbers,
     excludeFranchiseId
   )
-  return hits.find((h) => h.field === "tricycle_body_number") ?? hits[0] ?? null
+  for (const field of UNIT_FIELD_ORDER) {
+    const hit = hits.find((h) => h.field === field)
+    if (hit) return hit
+  }
+  return hits[0] ?? null
 }
 
 /**
@@ -245,11 +282,16 @@ export async function createNewFranchiseApplication(
       }
     }
 
-    // Body and plate number each identify one tricycle citywide. The database
-    // enforces this too; checking here names the franchise in the way.
+    // Body, plate, motor and chassis each identify one tricycle citywide. The
+    // database enforces all four; checking here names the franchise in the way.
+    // The motor+chassis pair check above stays: it catches the same vehicle
+    // being re-registered even from a closed franchise, which these indexes
+    // deliberately allow, and says something more useful when it does.
     const unitConflict = await findUnitIdentifierConflict(supabase, {
       bodyNumber: input.tricycle_body_number,
       plateNumber: input.plate_number,
+      motorNumber: input.motor_number,
+      chassisNumber: input.chassis_number,
     })
     if (unitConflict) {
       return { error: unitConflictMessage(unitConflict), data: null }
@@ -430,16 +472,18 @@ export async function createFranchiseTransaction(
     const isChangeUnit = input.transaction_type_code === "change_unit"
     const isChangeOwnership = input.transaction_type_code === "change_ownership"
 
-    // Body and plate number each identify one tricycle citywide, so whichever
-    // of them this transaction touches has to be free. On a change of unit the
-    // plate under test is the staged one — the current plate belongs to the
-    // unit being replaced and is checked against this franchise's own record,
-    // which is excluded below.
+    // Body, plate, motor and chassis each identify one tricycle citywide, so
+    // whichever of them this transaction touches has to be free. On a change
+    // of unit the numbers under test are the staged ones — the current plate,
+    // motor and chassis belong to the unit being replaced and sit on this
+    // franchise's own record, which is excluded below.
     const unitConflict = await findUnitIdentifierConflict(
       supabase,
       {
         bodyNumber: input.tricycle_body_number,
         plateNumber: isChangeUnit ? input.new_plate_number : input.plate_number,
+        motorNumber: isChangeUnit ? input.new_motor_number : undefined,
+        chassisNumber: isChangeUnit ? input.new_chassis_number : undefined,
       },
       franchise.id
     )
@@ -447,9 +491,7 @@ export async function createFranchiseTransaction(
       return {
         error: unitConflictMessage(
           unitConflict,
-          isChangeUnit && unitConflict.field === "plate_number"
-            ? "New plate number"
-            : undefined
+          isChangeUnit ? STAGED_FIELD_LABEL[unitConflict.field] : undefined
         ),
         data: null,
       }
@@ -588,7 +630,7 @@ export async function checkOperatorAvailability(
  * database — this is only allowed to be faster, never to be the last word.
  */
 export async function checkUnitIdentifiers(
-  numbers: { bodyNumber?: string; plateNumber?: string },
+  numbers: UnitNumbers,
   excludeFranchiseId?: string
 ): Promise<{ error: string | null; conflicts: UnitIdentifierConflict[] }> {
   try {
@@ -596,7 +638,7 @@ export async function checkUnitIdentifiers(
 
     const conflicts = await findUnitIdentifierConflicts(
       supabase,
-      { bodyNumber: numbers.bodyNumber, plateNumber: numbers.plateNumber },
+      numbers,
       excludeFranchiseId
     )
 
