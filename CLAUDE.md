@@ -197,6 +197,10 @@ Page files (`page.tsx`) are Server Components; heavy client logic is split into 
 
 `/print/mtop/[id]` renders the permit at exact PDF coordinates, so every run is absolutely positioned and `nowrap`. Data values that could be long go through `Fit` rather than `T` (`src/components/mtop/franchise-card.tsx`): it estimates the string's width, shrinks the type until it fits the space, and clips at the printable edge so nothing can run off the paper.
 
+`/print/confirmation/[id]` prints the LTO Confirmation Slip for any **granted** application — not only the annual confirmation, since the LTO asks for one after a renewal or a change of unit too. There is no source PDF for it (the original is an office form), so unlike the card it is laid out as flowed lines rather than absolute coordinates: preprinted wording in Arial, typed values on ruled blanks in Courier, all system fonts so nothing can fail to load mid-print. A value too long for its rule is shrunk by `Blank` (`src/components/mtop/confirmation-slip.tsx`) rather than clipped — Courier is monospaced, so the fitting size is arithmetic, expressed in `cqw` against the rule's own width so it needs no measuring pass and survives rewording. The copy marking (`LTO COPY`) and the mayor's name are constants at the top of that file.
+
+Both routes share `PrintControls` (`src/app/print/print-controls.tsx`) and `print.css`, which sets the 8.5 × 13in page.
+
 `/dashboard/franchises/[id]` is the franchise (operator) record — identity, current unit and driver, every transaction filed against it, and the full audit trail. It is reached from the "Franchise record" button on an application, not from the sidebar; there is no franchise list page.
 
 ### Environment Variables

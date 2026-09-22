@@ -10,6 +10,14 @@
   padding: 24px 16px 48px;
 }
 
+/* The slip is a white form, so only its drop shadow separates it from the
+   stage; the red copy marking still has to survive the print pipeline. */
+.mtop-slip {
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+  box-shadow: 0 8px 32px rgb(0 0 0 / 45%);
+}
+
 /* Background artwork and coloured text must survive the print pipeline —
    browsers strip backgrounds by default. */
 .mtop-card {
@@ -45,7 +53,8 @@
     padding: 0;
   }
 
-  .mtop-card {
+  .mtop-card,
+  .mtop-slip {
     box-shadow: none;
     break-inside: avoid;
   }

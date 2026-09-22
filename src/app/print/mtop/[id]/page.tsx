@@ -2,7 +2,7 @@ import { notFound } from "next/navigation"
 import localFont from "next/font/local"
 import { getFranchiseCardData } from "@/lib/actions/card"
 import { FranchiseCard } from "@/components/mtop/franchise-card"
-import { PrintControls } from "./print-controls"
+import { PrintControls } from "../../print-controls"
 
 // The permit's own typography, independent of the app's Plus Jakarta Sans.
 // Self-hosted from src/app/fonts — see that folder's README for why.
@@ -56,7 +56,11 @@ export default async function PrintMtopCardPage({
     <main
       className={`${oswald.variable} ${playfair.variable} ${poppins.variable} print-card-page`}
     >
-      <PrintControls mtopNumber={data.mtopNumber} />
+      <PrintControls
+        title="Franchise Card"
+        subject={data.mtopNumber}
+        hint="Print on 8.5 × 13 in (long bond) at 100% scale, background graphics on."
+      />
       <div className="card-stage">
         <FranchiseCard data={data} />
       </div>

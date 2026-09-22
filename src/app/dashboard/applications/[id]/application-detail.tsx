@@ -181,16 +181,34 @@ export function ApplicationDetail({
               </Link>
             )}
             {application.status === "granted" && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() =>
-                  window.open(`/print/mtop/${application.id}`, "_blank")
-                }
-              >
-                <Printer className="h-4 w-4" />
-                Print Franchise Card
-              </Button>
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    window.open(`/print/mtop/${application.id}`, "_blank")
+                  }
+                >
+                  <Printer className="h-4 w-4" />
+                  Print Franchise Card
+                </Button>
+                {/* The LTO's copy of the confirmation. Every granted
+                    transaction can produce one, not just the annual
+                    confirmation slip. */}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    window.open(
+                      `/print/confirmation/${application.id}`,
+                      "_blank"
+                    )
+                  }
+                >
+                  <Printer className="h-4 w-4" />
+                  Print Confirmation Slip
+                </Button>
+              </>
             )}
             <StatusBadge status={application.status} />
           </div>
