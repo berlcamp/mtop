@@ -24,10 +24,12 @@ import type {
   MtopStatus,
   MtopApplication,
   MtopFranchise,
+  TransactionType,
 } from "@/types/database"
 
 type ApplicationRow = MtopApplication & {
   franchise: MtopFranchise | null
+  transaction_type: TransactionType | null
 }
 
 const STATUS_TABS: { value: string; label: string }[] = [
@@ -210,6 +212,7 @@ export function ApplicationsTable({
             <TableRow className="bg-muted/40 hover:bg-muted/40 border-b border-border/60">
               <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">MTOP #</TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">Applicant</TableHead>
+              <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80 hidden lg:table-cell">Transaction</TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80 hidden md:table-cell">Body #</TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80 hidden lg:table-cell">Route</TableHead>
               <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/80">Status</TableHead>
@@ -220,7 +223,7 @@ export function ApplicationsTable({
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center py-12 text-muted-foreground text-sm">
+                <TableCell colSpan={8} className="text-center py-12 text-muted-foreground text-sm">
                   <div className="flex items-center justify-center gap-2">
                     <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
                     Loading applications…
@@ -229,7 +232,7 @@ export function ApplicationsTable({
               </TableRow>
             ) : applications.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center py-16 text-muted-foreground">
+                <TableCell colSpan={8} className="text-center py-16 text-muted-foreground">
                   <div className="flex flex-col items-center gap-2">
                     <FileText className="h-8 w-8 text-muted-foreground/30" />
                     <p className="text-sm font-medium">No applications found</p>
@@ -264,6 +267,9 @@ export function ApplicationsTable({
                     </TableCell>
                     <TableCell className="font-medium text-foreground">
                       {app.franchise?.applicant_name ?? "—"}
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground hidden lg:table-cell">
+                      {app.transaction_type?.name ?? "—"}
                     </TableCell>
                     <TableCell className="font-mono text-sm text-muted-foreground hidden md:table-cell">
                       {app.franchise?.tricycle_body_number || "—"}

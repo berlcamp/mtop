@@ -16,7 +16,7 @@ import { Separator } from "@/components/ui/separator"
 import { StatusBadge } from "@/components/shared/status-badge"
 import { ApprovalStepper } from "@/components/shared/approval-stepper"
 import { TimelineLog } from "@/components/shared/timeline-log"
-import { DocumentChecklist } from "@/components/mtop/document-checklist"
+import { RequirementChecklist } from "@/components/mtop/requirement-checklist"
 import { FranchisePhotosCard } from "@/components/mtop/franchise-photos-card"
 import { InspectionChecklist } from "@/components/mtop/inspection-checklist"
 import { FeeAssessmentForm } from "@/components/mtop/fee-assessment-form"
@@ -37,9 +37,10 @@ import {
 } from "lucide-react"
 import { format } from "date-fns"
 import { updateApplicationStatus } from "@/lib/actions/applications"
-import { checkNegativeList } from "@/lib/actions/documents"
+import { checkNegativeList } from "@/lib/actions/requirements"
 import { usePermissions } from "@/lib/hooks/use-permissions"
 import { getExpirationStatus } from "@/lib/utils/permit-expiration"
+import { isBlocking } from "@/lib/requirements"
 import { ExpirationBadge } from "@/components/shared/expiration-badge"
 import type { MtopStatus } from "@/types/database"
 import type { SystemSettings } from "@/lib/actions/settings"
@@ -101,16 +102,19 @@ export function ApplicationDetail({ application, settings }: { application: any;
     setRemarks("")
   }
 
-  const docs = application.documents ?? []
-  const verifiedCount = docs.filter(
-    (d: { is_verified: boolean }) => d.is_verified
+  const requirements = application.requirements ?? []
+  const transactionType = application.transaction_type
+  // Only mandatory, non-conditional items gate the forward button.
+  const blockingItems = requirements.filter(isBlocking)
+  const blockingCleared = blockingItems.filter(
+    (r: { is_verified: boolean }) => r.is_verified
   ).length
 
   return (
     <div className="space-y-6">
       <PageHeader
         title={franchise?.mtop_number ?? "Pending MTOP Number"}
-        subtitle={`${franchise?.applicant_name ?? ""} — ${franchise?.route ?? "No route"}`}
+        subtitle={`${transactionType?.name ?? "Application"} · ${franchise?.applicant_name ?? ""} — ${franchise?.route ?? "No route"}`}
         actions={
           <div className="flex items-center gap-2">
             {application.status === "granted" && (
@@ -321,18 +325,22 @@ export function ApplicationDetail({ application, settings }: { application: any;
             </CardContent>
           </Card>
 
-          {/* Document Verification Checklist */}
-          <DocumentChecklist
-            documents={docs}
+          {/* Requirement checklist for this transaction */}
+          <RequirementChecklist
+            requirements={requirements}
             applicationId={application.id}
+            transactionName={transactionType?.name}
             canVerify={
               can("application.verify") &&
               application.status === "for_verification"
             }
           />
 
-          {/* Inspection — show from for_inspection stage onward */}
-          {application.status !== "for_verification" && (
+          {/* Inspection — only for transactions that require one, and only from
+              the for_inspection stage onward. Annual confirmation, re-issuance
+              and closure never enter this stage. */}
+          {transactionType?.requires_inspection !== false &&
+            application.status !== "for_verification" && (
             <InspectionChecklist
               applicationId={application.id}
               existingInspection={application.inspection}
@@ -377,8 +385,9 @@ export function ApplicationDetail({ application, settings }: { application: any;
             remarks={remarks}
             onRemarksChange={setRemarks}
             onAction={handleStatusChange}
-            verifiedCount={verifiedCount}
-            totalDocs={docs.length}
+            blockingCleared={blockingCleared}
+            blockingTotal={blockingItems.length}
+            requiresInspection={transactionType?.requires_inspection !== false}
             inspection={application.inspection}
             assessment={application.assessment}
             payments={application.payments}
@@ -527,8 +536,9 @@ function StageActions({
   remarks,
   onRemarksChange,
   onAction,
-  verifiedCount,
-  totalDocs,
+  blockingCleared,
+  blockingTotal,
+  requiresInspection,
   inspection,
   assessment,
   payments,
@@ -543,8 +553,9 @@ function StageActions({
     status: MtopStatus,
     action: "approved" | "rejected" | "returned" | "forwarded"
   ) => void
-  verifiedCount: number
-  totalDocs: number
+  blockingCleared: number
+  blockingTotal: number
+  requiresInspection: boolean
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   inspection: any
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -565,12 +576,17 @@ function StageActions({
   switch (status) {
     case "for_verification":
       title = "Verification Actions"
-      description = "Verify all documents before forwarding to inspection."
-      forwardLabel = "Forward to Inspection"
-      forwardStatus = "for_inspection"
+      // Transactions without a physical inspection skip straight to assessment.
+      description = requiresInspection
+        ? "Clear every required item before forwarding to inspection."
+        : "Clear every required item before forwarding to assessment."
+      forwardLabel = requiresInspection
+        ? "Forward to Inspection"
+        : "Forward to Assessment"
+      forwardStatus = requiresInspection ? "for_inspection" : "for_assessment"
       canForward =
         can("application.verify") &&
-        verifiedCount === totalDocs &&
+        blockingCleared === blockingTotal &&
         !isOnNegativeList
       canReturn = can("application.verify")
       break
@@ -683,10 +699,10 @@ function StageActions({
         )}
         {status === "for_verification" &&
           !isOnNegativeList &&
-          verifiedCount < totalDocs && (
+          blockingCleared < blockingTotal && (
             <p className="text-xs text-muted-foreground">
-              {totalDocs - verifiedCount} document(s) still need verification
-              before forwarding.
+              {blockingTotal - blockingCleared} required item(s) still need to be
+              cleared before forwarding.
             </p>
           )}
         {status === "for_inspection" && !inspection && (

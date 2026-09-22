@@ -5,22 +5,13 @@ import { createClient } from "@/lib/supabase/server"
 import { getSystemSettings } from "@/lib/actions/settings"
 import type {
   NewFranchiseApplicationFormValues,
-  RenewalApplicationFormValues,
+  FranchiseTransactionFormValues,
 } from "@/lib/schemas/mtop"
-import type { MtopStatus } from "@/types/database"
-
-const DOCUMENT_TYPES = [
-  "application_form",
-  "ctms_clearance",
-  "lto_or",
-  "voters_certificate",
-  "barangay_certification",
-  "barangay_endorsement",
-  "ctc",
-  "police_clearance",
-  "drivers_license",
-  "affidavit_no_franchise",
-] as const
+import type {
+  MtopStatus,
+  TransactionType,
+  TransactionTypeCode,
+} from "@/types/database"
 
 const ACTIVE_STATUSES: MtopStatus[] = [
   "for_verification",
@@ -41,20 +32,54 @@ async function getAuthUser() {
 
 type Supabase = Awaited<ReturnType<typeof getAuthUser>>["supabase"]
 
+async function resolveTransactionType(
+  supabase: Supabase,
+  code: TransactionTypeCode
+): Promise<{ error: string | null; data: TransactionType | null }> {
+  const { data, error } = await supabase
+    .schema("mtop")
+    .from("transaction_types")
+    .select("*")
+    .eq("code", code)
+    .eq("is_active", true)
+    .maybeSingle()
+
+  if (error) return { error: error.message, data: null }
+  if (!data) return { error: `Unknown transaction type "${code}".`, data: null }
+  return { error: null, data: data as TransactionType }
+}
+
+/**
+ * Copies the transaction's checklist onto the new application. The list lives
+ * in mtop.transaction_requirements, so adding or removing a requirement is a
+ * data change — no migration, no code change here.
+ */
 async function seedApplicationChildren(
   supabase: Supabase,
   applicationId: string,
-  actorId: string
+  actorId: string,
+  transactionTypeId: string
 ) {
-  const documentRecords = DOCUMENT_TYPES.map((docType) => ({
-    application_id: applicationId,
-    document_type: docType,
-  }))
+  const { data: matrix, error: matrixError } = await supabase
+    .schema("mtop")
+    .from("transaction_requirements")
+    .select("requirement_id")
+    .eq("transaction_type_id", transactionTypeId)
+
+  if (matrixError) return matrixError.message
+  if (!matrix || matrix.length === 0) {
+    return "This transaction has no requirements configured. Ask an administrator to set up its checklist."
+  }
 
   const { error: docError } = await supabase
     .schema("mtop")
-    .from("mtop_documents")
-    .insert(documentRecords)
+    .from("mtop_application_requirements")
+    .insert(
+      matrix.map((row: { requirement_id: string }) => ({
+        application_id: applicationId,
+        requirement_id: row.requirement_id,
+      }))
+    )
 
   if (docError) return docError.message
 
@@ -77,6 +102,11 @@ export async function createNewFranchiseApplication(
 ) {
   try {
     const { supabase, user } = await getAuthUser()
+
+    const { error: typeError, data: transactionType } =
+      await resolveTransactionType(supabase, "new_franchise")
+    if (typeError || !transactionType)
+      return { error: typeError, data: null }
 
     // Same motor + chassis = same vehicle = same franchise. Block duplicates.
     const { data: existing, error: existingError } = await supabase
@@ -123,6 +153,7 @@ export async function createNewFranchiseApplication(
       .from("mtop_applications")
       .insert({
         franchise_id: franchise.id,
+        transaction_type_id: transactionType.id,
         due_date: input.due_date || null,
         created_by: user.id,
       })
@@ -134,7 +165,8 @@ export async function createNewFranchiseApplication(
     const childError = await seedApplicationChildren(
       supabase,
       application.id,
-      user.id
+      user.id,
+      transactionType.id
     )
     if (childError) return { error: childError, data: null }
 
@@ -145,12 +177,26 @@ export async function createNewFranchiseApplication(
   }
 }
 
-export async function createRenewalApplication(
-  input: RenewalApplicationFormValues
+/**
+ * Files any of the six transactions that act on a franchise that already
+ * exists — renewal, annual confirmation, change of unit, change of ownership,
+ * re-issuance or closure.
+ *
+ * Only the renewal-window rule is transaction-specific at filing time; the
+ * rules that differ on *grant* (what happens to the MTOP number, the validity
+ * date, the unit or the owner) are keyed off transaction_types.grant_effect and
+ * are not applied here.
+ */
+export async function createFranchiseTransaction(
+  input: FranchiseTransactionFormValues
 ) {
   try {
     const { supabase, user } = await getAuthUser()
     const { data: settings } = await getSystemSettings()
+
+    const { error: typeError, data: transactionType } =
+      await resolveTransactionType(supabase, input.transaction_type_code)
+    if (typeError || !transactionType) return { error: typeError, data: null }
 
     const { data: franchise, error: franchiseError } = await supabase
       .schema("mtop")
@@ -160,29 +206,34 @@ export async function createRenewalApplication(
       .single()
 
     if (franchiseError) return { error: franchiseError.message, data: null }
+
+    // Every one of these transactions acts on a franchise the city has already
+    // granted — there is no MTOP to renew, confirm, transfer or close until then.
     if (!franchise.granted_until || !franchise.mtop_number) {
       return {
-        error:
-          "This franchise has not been granted yet — it cannot be renewed until its first application is granted.",
+        error: `This franchise has not been granted yet — ${transactionType.name} cannot be filed until its first application is granted.`,
         data: null,
       }
     }
 
-    // Renewal opens once today is within renewal_window_days of expiry.
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    const expiry = new Date(franchise.granted_until)
-    const earliestRenewal = new Date(expiry)
-    earliestRenewal.setDate(
-      earliestRenewal.getDate() - settings.renewal_window_days
-    )
+    // The renewal window is a renewal rule. An annual confirmation, a change of
+    // unit or a closure can be filed at any point in the franchise's life.
+    if (transactionType.code === "renewal") {
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      const expiry = new Date(franchise.granted_until)
+      const earliestRenewal = new Date(expiry)
+      earliestRenewal.setDate(
+        earliestRenewal.getDate() - settings.renewal_window_days
+      )
 
-    if (today < earliestRenewal) {
-      return {
-        error: `Too early to renew. Renewal opens on ${earliestRenewal
-          .toISOString()
-          .slice(0, 10)} (within ${settings.renewal_window_days} days of expiry).`,
-        data: null,
+      if (today < earliestRenewal) {
+        return {
+          error: `Too early to renew. Renewal opens on ${earliestRenewal
+            .toISOString()
+            .slice(0, 10)} (within ${settings.renewal_window_days} days of expiry).`,
+          data: null,
+        }
       }
     }
 
@@ -198,7 +249,7 @@ export async function createRenewalApplication(
     if (inflight && inflight.length > 0) {
       return {
         error:
-          "This franchise already has an in-flight application. Complete or reject it before filing a renewal.",
+          "This franchise already has an in-flight application. Complete, reject or close it before filing another transaction.",
         data: null,
       }
     }
@@ -215,6 +266,10 @@ export async function createRenewalApplication(
     if (input.tricycle_body_number !== undefined)
       franchiseUpdates.tricycle_body_number = input.tricycle_body_number
     if (input.route !== undefined) franchiseUpdates.route = input.route
+    if (input.make !== undefined)
+      franchiseUpdates.make = input.make?.trim() || null
+    if (input.day_off !== undefined)
+      franchiseUpdates.day_off = input.day_off?.trim() || null
 
     const { error: updateError } = await supabase
       .schema("mtop")
@@ -229,6 +284,7 @@ export async function createRenewalApplication(
       .from("mtop_applications")
       .insert({
         franchise_id: franchise.id,
+        transaction_type_id: transactionType.id,
         due_date: input.due_date || null,
         created_by: user.id,
       })
@@ -240,7 +296,8 @@ export async function createRenewalApplication(
     const childError = await seedApplicationChildren(
       supabase,
       application.id,
-      user.id
+      user.id,
+      transactionType.id
     )
     if (childError) return { error: childError, data: null }
 
@@ -307,7 +364,10 @@ export async function getApplications(filters: ApplicationFilters = {}) {
     let query = supabase
       .schema("mtop")
       .from("mtop_applications")
-      .select("*, franchise:mtop_franchises(*)", { count: "exact" })
+      .select(
+        "*, franchise:mtop_franchises(*), transaction_type:transaction_types(*)",
+        { count: "exact" }
+      )
       .order("created_at", { ascending: false })
 
     if (status) {
@@ -346,22 +406,33 @@ export async function getApplication(id: string) {
   try {
     const { supabase } = await getAuthUser()
 
-    const [appResult, docsResult, inspResult, assessResult, payResult, logsResult] =
+    // The application row comes first: its transaction_type_id decides which
+    // checklist rules to merge into the requirement rows below.
+    const { data: application, error: appError } = await supabase
+      .schema("mtop")
+      .from("mtop_applications")
+      .select(
+        "*, franchise:mtop_franchises(*), transaction_type:transaction_types(*), creator:user_profiles!created_by(id, full_name, email)"
+      )
+      .eq("id", id)
+      .single()
+
+    if (appError) return { error: appError.message, data: null }
+
+    const [reqResult, matrixResult, inspResult, assessResult, payResult, logsResult] =
       await Promise.all([
         supabase
           .schema("mtop")
-          .from("mtop_applications")
+          .from("mtop_application_requirements")
           .select(
-            "*, franchise:mtop_franchises(*), creator:user_profiles!created_by(id, full_name, email)"
+            "*, requirement:requirements(code, label, kind, description)"
           )
-          .eq("id", id)
-          .single(),
+          .eq("application_id", id),
         supabase
           .schema("mtop")
-          .from("mtop_documents")
-          .select("*")
-          .eq("application_id", id)
-          .order("document_type"),
+          .from("transaction_requirements")
+          .select("requirement_id, is_mandatory, is_conditional, note, sort_order")
+          .eq("transaction_type_id", application.transaction_type_id),
         supabase
           .schema("mtop")
           .from("mtop_inspections")
@@ -392,13 +463,55 @@ export async function getApplication(id: string) {
           .order("created_at", { ascending: false }),
       ])
 
-    if (appResult.error) return { error: appResult.error.message, data: null }
+    // Merge each application row with its catalogue entry and this
+    // transaction's rules for it. A row whose requirement was later dropped
+    // from the matrix still renders — it just carries no rule overrides, so it
+    // is treated as mandatory, which is how it was seeded.
+    const rules = new Map(
+      (matrixResult.data ?? []).map(
+        (r: {
+          requirement_id: string
+          is_mandatory: boolean
+          is_conditional: boolean
+          note: string | null
+          sort_order: number
+        }) => [r.requirement_id, r]
+      )
+    )
+
+    const requirements = (reqResult.data ?? [])
+      .map(
+        (row: {
+          requirement_id: string
+          requirement: {
+            code: string
+            label: string
+            kind: string
+            description: string
+          } | null
+        } & Record<string, unknown>) => {
+          const rule = rules.get(row.requirement_id)
+          const { requirement, ...rest } = row
+          return {
+            ...rest,
+            code: requirement?.code ?? "unknown",
+            label: requirement?.label ?? "Unknown requirement",
+            kind: requirement?.kind ?? "document",
+            description: requirement?.description ?? "",
+            is_mandatory: rule?.is_mandatory ?? true,
+            is_conditional: rule?.is_conditional ?? false,
+            note: rule?.note ?? null,
+            sort_order: rule?.sort_order ?? 999,
+          }
+        }
+      )
+      .sort((a, b) => a.sort_order - b.sort_order)
 
     return {
       error: null,
       data: {
-        ...appResult.data,
-        documents: docsResult.data ?? [],
+        ...application,
+        requirements,
         inspection: inspResult.data ?? null,
         assessment: assessResult.data ?? null,
         payments: payResult.data ?? [],

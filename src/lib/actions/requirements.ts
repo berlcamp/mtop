@@ -12,8 +12,8 @@ async function getAuthUser() {
   return { supabase, user }
 }
 
-export async function verifyDocument(
-  documentId: string,
+export async function verifyRequirement(
+  requirementRowId: string,
   applicationId: string,
   verified: boolean
 ) {
@@ -22,13 +22,13 @@ export async function verifyDocument(
 
     const { error } = await supabase
       .schema("mtop")
-      .from("mtop_documents")
+      .from("mtop_application_requirements")
       .update({
         is_verified: verified,
         verified_by: verified ? user.id : null,
         verified_at: verified ? new Date().toISOString() : null,
       })
-      .eq("id", documentId)
+      .eq("id", requirementRowId)
 
     if (error) return { error: error.message }
 
@@ -39,8 +39,8 @@ export async function verifyDocument(
   }
 }
 
-export async function updateDocumentRemarks(
-  documentId: string,
+export async function updateRequirementRemarks(
+  requirementRowId: string,
   applicationId: string,
   remarks: string
 ) {
@@ -49,9 +49,9 @@ export async function updateDocumentRemarks(
 
     const { error } = await supabase
       .schema("mtop")
-      .from("mtop_documents")
+      .from("mtop_application_requirements")
       .update({ remarks: remarks || null })
-      .eq("id", documentId)
+      .eq("id", requirementRowId)
 
     if (error) return { error: error.message }
 
@@ -62,8 +62,8 @@ export async function updateDocumentRemarks(
   }
 }
 
-export async function updateDocumentFileUrl(
-  documentId: string,
+export async function updateRequirementFileUrl(
+  requirementRowId: string,
   applicationId: string,
   fileUrl: string | null
 ) {
@@ -72,9 +72,9 @@ export async function updateDocumentFileUrl(
 
     const { error } = await supabase
       .schema("mtop")
-      .from("mtop_documents")
+      .from("mtop_application_requirements")
       .update({ file_url: fileUrl })
-      .eq("id", documentId)
+      .eq("id", requirementRowId)
 
     if (error) return { error: error.message }
 

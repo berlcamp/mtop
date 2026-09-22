@@ -14,6 +14,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { SidebarTrigger } from "@/components/ui/sidebar"
+import { GlobalSearch } from "@/components/layout/global-search"
 import { Bell, ChevronDown, LogOut, User } from "lucide-react"
 
 const SEGMENT_LABELS: Record<string, string> = {
@@ -102,9 +103,12 @@ export function Topbar() {
       <div className="h-5 w-px bg-border" />
 
       {/* Breadcrumbs */}
-      <div className="flex-1">
+      <div className="min-w-0 flex-1">
         <Breadcrumbs />
       </div>
+
+      {/* Franchise search — reachable from every dashboard page */}
+      <GlobalSearch />
 
       {/* Right controls */}
       <div className="flex items-center gap-0.5">

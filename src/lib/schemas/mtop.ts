@@ -19,6 +19,7 @@ export const franchiseSchema = z.object({
 export type FranchiseFormValues = z.infer<typeof franchiseSchema>
 
 // First-time application — creates a new franchise + first application together.
+// This is the only transaction that does not start from an existing franchise.
 export const newFranchiseApplicationSchema = franchiseSchema.extend({
   due_date: z.string().optional(),
 })
@@ -27,10 +28,21 @@ export type NewFranchiseApplicationFormValues = z.infer<
   typeof newFranchiseApplicationSchema
 >
 
-// Renewal — only the editable fields (motor/chassis/applicant_name are locked
-// on the franchise; changing motor/chassis means a brand-new franchise).
-export const renewalApplicationSchema = z.object({
+// Transactions filed against a franchise that already exists. One schema for
+// all six of them; which one is being filed is `transaction_type_code`, and the
+// server action applies the rules specific to that transaction.
+export const existingFranchiseTransactionCodes = [
+  "renewal",
+  "annual_confirmation",
+  "change_unit",
+  "change_ownership",
+  "reissuance",
+  "closure",
+] as const
+
+export const franchiseTransactionSchema = z.object({
   franchise_id: z.string().uuid(),
+  transaction_type_code: z.enum(existingFranchiseTransactionCodes),
   applicant_address: z
     .string()
     .min(5, "Address must be at least 5 characters")
@@ -47,8 +59,8 @@ export const renewalApplicationSchema = z.object({
   due_date: z.string().optional(),
 })
 
-export type RenewalApplicationFormValues = z.infer<
-  typeof renewalApplicationSchema
+export type FranchiseTransactionFormValues = z.infer<
+  typeof franchiseTransactionSchema
 >
 
 // Inspection schema

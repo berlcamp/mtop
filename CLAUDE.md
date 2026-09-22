@@ -46,7 +46,7 @@ OAuth callback at `/auth/callback/route.ts`:
 
 ### Data Layer
 
-All database mutations are **Server Actions** in `src/lib/actions/`. Each action file (`applications.ts`, `assessments.ts`, `documents.ts`, `inspections.ts`, `payments.ts`, etc.) uses `"use server"` and calls `createClient()` from `server.ts`. Actions return `{ error: string | null, data: ... }` — never throw to the client.
+All database mutations are **Server Actions** in `src/lib/actions/`. Each action file (`applications.ts`, `assessments.ts`, `requirements.ts`, `inspections.ts`, `payments.ts`, `transaction-types.ts`, etc.) uses `"use server"` and calls `createClient()` from `server.ts`. Actions return `{ error: string | null, data: ... }` — never throw to the client.
 
 Application status flows through these stages in order:
 `for_verification` → `for_inspection` → `for_assessment` → `for_approval` → `granted`
@@ -60,16 +60,35 @@ Every status change inserts a row into `mtop.approval_logs`.
 The MTOP number is the **stable franchise identifier**, not a per-application number. Two tables back this:
 
 - `mtop.mtop_franchises` — owner + tricycle identity (motor, chassis, plate, body, route, address, contact). Holds `mtop_number` and `granted_until`. Same row across renewals.
-- `mtop.mtop_applications` — per-cycle renewal pointing at a franchise via `franchise_id`. One row per fiscal year per franchise (unique constraint).
+- `mtop.mtop_applications` — one transaction filed against a franchise via `franchise_id`, typed by `transaction_type_id`. A partial unique index allows **at most one in-flight application per franchise** (statuses other than `granted`/`rejected`); there is no longer a one-row-per-fiscal-year constraint, because a franchise can legitimately file, say, an annual confirmation and a change of unit in the same year.
 
-Renewal flow (`src/lib/actions/applications.ts`):
-- `createNewFranchiseApplication` registers a brand-new franchise + first application. Rejected if `(motor_number, chassis_number)` already exists — change to motor or chassis means a new franchise.
-- `createRenewalApplication` files a renewal against an existing franchise. Allowed once `today >= granted_until − system_settings.renewal_window_days`. Blocked if another application is in-flight (status not in `granted`/`rejected`).
-- `searchFranchises(query)` powers the lookup combobox on the new-application page (matches by `mtop_number` or `applicant_name`).
+Creation flow (`src/lib/actions/applications.ts`):
+- `createNewFranchiseApplication` registers a brand-new franchise + first application. Rejected if `(motor_number, chassis_number)` already exists.
+- `createFranchiseTransaction` files any of the six transactions against an existing franchise. The franchise must already be granted. The renewal-window rule (`today >= granted_until − system_settings.renewal_window_days`) applies **only** to `renewal`. Blocked if another application is in-flight.
+- `searchFranchises(query)` powers the lookup on the new-application page; `searchFranchisesGlobal(query)` in `src/lib/actions/search.ts` powers the topbar search (⌘K), which resolves a hit to its most recent application.
 
-`mtop.grant_franchise(franchise_id, granted_at, validity_years)` is a `SECURITY DEFINER` Postgres function that runs when an application transitions to `granted`. It atomically (a) assigns the next MTOP number from `mtop.mtop_number_seq` if the franchise doesn't have one yet, and (b) advances `granted_until` to `granted_at + validity_years` (anniversary).
+`mtop.grant_franchise(franchise_id, granted_at, validity_years)` is a `SECURITY DEFINER` Postgres function that runs when an application transitions to `granted`. It atomically (a) assigns the next MTOP number via `mtop.next_mtop_number(year)` if the franchise doesn't have one yet (year-prefixed, `2026-0001`), and (b) advances `granted_until` to `granted_at + validity_years` (anniversary).
+
+It currently implements only the `issue_number` and `extend_validity` grant effects — the other five (`replace_unit`, `transfer_owner`, `confirm_year`, `reprint_permit`, `close_franchise`) are seeded on `transaction_types` but not yet branched on here.
 
 System settings drive both the validity period (`permit_validity_years`, default 3) and renewal window (`renewal_window_days`, default 90); managed in `src/lib/actions/settings.ts`.
+
+### Transactions and Requirements
+
+The city runs **seven** transactions over a franchise, seeded in `mtop.transaction_types`:
+`new_franchise`, `renewal`, `annual_confirmation`, `change_unit`, `change_ownership`, `reissuance`, `closure`.
+
+Each row carries `grant_effect` (what granting it does to the franchise), `requires_existing_franchise` and `requires_inspection`. The UI reads `name`, `description` and `when_to_use` straight from this table, so wording changes need no code change.
+
+Checklists are **reference data, not code**:
+
+- `mtop.requirements` — the catalogue (~37 items), each with a `kind`: `document`, `payment`, `inspection`, `appearance`, `photo` or `surrender`. The kind decides where the item is cleared, because the city's paper checklist mixes all six into one column.
+- `mtop.transaction_requirements` — which requirements each transaction asks for, with `is_mandatory`, `is_conditional`, `note` (per-transaction wording) and `sort_order`.
+- `mtop.mtop_application_requirements` — the per-application rows, copied from the matrix by `seedApplicationChildren` at creation. (This is the old `mtop_documents` table; the `mtop_document_type` enum is gone.)
+
+Only **mandatory, non-conditional** items block forwarding out of verification — see `isBlocking` in `src/lib/requirements.ts`. Conditional items (e.g. the Affidavit of No Franchise, which the ordinance requires only for units from an abandoned MTOP) show as "If applicable" and never block.
+
+To add or reword a checklist item, `INSERT`/`UPDATE` these tables. Do not add TypeScript arrays of requirement codes.
 
 ### Types
 
@@ -89,7 +108,7 @@ npx supabase gen types typescript --project-id <id> > src/types/database.ts
 - `src/components/ui/` — shadcn primitives (do not hand-edit these)
 - `src/components/layout/` — `Sidebar`, `Topbar`, `PageHeader`, `NavigationProgress`
 - `src/components/shared/` — reusable domain-agnostic components (`StatusBadge`, `ApprovalStepper`, `TimelineLog`, `ExpirationBadge`)
-- `src/components/mtop/` — domain-specific forms (`DocumentChecklist`, `InspectionChecklist`, `FeeAssessmentForm`, `PaymentForm`)
+- `src/components/mtop/` — domain-specific forms (`RequirementChecklist`, `InspectionChecklist`, `FeeAssessmentForm`, `PaymentForm`)
 
 ### Route Structure
 

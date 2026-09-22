@@ -10,17 +10,37 @@ export type MtopStatus =
   | "rejected"
   | "returned"
 
-export type MtopDocumentType =
-  | "application_form"
-  | "ctms_clearance"
-  | "lto_or"
-  | "voters_certificate"
-  | "barangay_certification"
-  | "barangay_endorsement"
-  | "ctc"
-  | "police_clearance"
-  | "drivers_license"
-  | "affidavit_no_franchise"
+// The seven transactions the city runs over a franchise. Codes are stable;
+// everything else about a transaction (label, checklist, fees) is reference
+// data in mtop.transaction_types / mtop.transaction_requirements.
+export type TransactionTypeCode =
+  | "new_franchise"
+  | "renewal"
+  | "annual_confirmation"
+  | "change_unit"
+  | "change_ownership"
+  | "reissuance"
+  | "closure"
+
+// What granting an application does to its franchise.
+export type GrantEffect =
+  | "issue_number"
+  | "extend_validity"
+  | "replace_unit"
+  | "transfer_owner"
+  | "confirm_year"
+  | "reprint_permit"
+  | "close_franchise"
+
+// A checklist row is not always a file to upload — see the migration comment
+// in 20260413000014_requirements_matrix.sql.
+export type RequirementKind =
+  | "document"
+  | "payment"
+  | "inspection"
+  | "appearance"
+  | "photo"
+  | "surrender"
 
 export type ApprovalAction = "approved" | "rejected" | "returned" | "forwarded"
 
@@ -87,6 +107,7 @@ export interface MtopFranchise {
 export interface MtopApplication {
   id: string
   franchise_id: string
+  transaction_type_id: string
   status: MtopStatus
   fiscal_year: number
   due_date: string | null
@@ -98,15 +119,64 @@ export interface MtopApplication {
   updated_at: string
 }
 
-export interface MtopDocument {
+export interface TransactionType {
+  id: string
+  code: TransactionTypeCode
+  name: string
+  description: string
+  when_to_use: string
+  grant_effect: GrantEffect
+  requires_existing_franchise: boolean
+  requires_inspection: boolean
+  sort_order: number
+  is_active: boolean
+  created_at: string
+}
+
+export interface Requirement {
+  id: string
+  code: string
+  label: string
+  kind: RequirementKind
+  description: string
+  is_active: boolean
+  created_at: string
+}
+
+export interface TransactionRequirement {
+  id: string
+  transaction_type_id: string
+  requirement_id: string
+  is_mandatory: boolean
+  is_conditional: boolean
+  note: string | null
+  sort_order: number
+}
+
+// One checklist row on one application. Replaces the old MtopDocument — the
+// table now carries payment, inspection, appearance and photo rows too.
+export interface ApplicationRequirement {
   id: string
   application_id: string
-  document_type: MtopDocumentType
+  requirement_id: string
   file_url: string | null
   is_verified: boolean
   verified_by: string | null
   verified_at: string | null
   remarks: string | null
+}
+
+// What the application detail page actually renders: the row joined to its
+// catalogue entry and to this transaction's rules for it.
+export interface ApplicationRequirementWithDetail extends ApplicationRequirement {
+  code: string
+  label: string
+  kind: RequirementKind
+  description: string
+  is_mandatory: boolean
+  is_conditional: boolean
+  note: string | null
+  sort_order: number
 }
 
 export interface MtopInspection {
@@ -194,7 +264,8 @@ export interface SystemSetting {
 // Joined types for common queries
 export interface MtopApplicationWithRelations extends MtopApplication {
   franchise?: MtopFranchise | null
-  documents?: MtopDocument[]
+  transaction_type?: TransactionType | null
+  requirements?: ApplicationRequirementWithDetail[]
   inspection?: MtopInspection | null
   assessment?: MtopAssessment | null
   payments?: MtopPayment[]
@@ -280,10 +351,28 @@ export interface MtopSchema {
       }
       Update: Partial<Omit<MtopApplication, "id">>
     }
-    mtop_documents: {
-      Row: MtopDocument
-      Insert: Omit<MtopDocument, "id" | "is_verified"> & { id?: string; is_verified?: boolean }
-      Update: Partial<Omit<MtopDocument, "id">>
+    transaction_types: {
+      Row: TransactionType
+      Insert: Omit<TransactionType, "id" | "created_at"> & { id?: string; created_at?: string }
+      Update: Partial<Omit<TransactionType, "id">>
+    }
+    requirements: {
+      Row: Requirement
+      Insert: Omit<Requirement, "id" | "created_at"> & { id?: string; created_at?: string }
+      Update: Partial<Omit<Requirement, "id">>
+    }
+    transaction_requirements: {
+      Row: TransactionRequirement
+      Insert: Omit<TransactionRequirement, "id"> & { id?: string }
+      Update: Partial<Omit<TransactionRequirement, "id">>
+    }
+    mtop_application_requirements: {
+      Row: ApplicationRequirement
+      Insert: Omit<ApplicationRequirement, "id" | "is_verified"> & {
+        id?: string
+        is_verified?: boolean
+      }
+      Update: Partial<Omit<ApplicationRequirement, "id">>
     }
     mtop_inspections: {
       Row: MtopInspection
@@ -331,6 +420,7 @@ export interface MtopSchema {
   }
   Enums: {
     mtop_status: MtopStatus
-    mtop_document_type: MtopDocumentType
+    requirement_kind: RequirementKind
+    grant_effect: GrantEffect
   }
 }
