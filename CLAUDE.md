@@ -159,6 +159,8 @@ All authenticated routes live under `/dashboard`. The dashboard layout (`src/app
 
 Page files (`page.tsx`) are Server Components; heavy client logic is split into `*-content.tsx` Client Components alongside them.
 
+`/print/mtop/[id]` renders the permit at exact PDF coordinates, so every run is absolutely positioned and `nowrap`. Data values that could be long go through `Fit` rather than `T` (`src/components/mtop/franchise-card.tsx`): it estimates the string's width, shrinks the type until it fits the space, and clips at the printable edge so nothing can run off the paper.
+
 `/dashboard/franchises/[id]` is the franchise (operator) record — identity, current unit and driver, every transaction filed against it, and the full audit trail. It is reached from the "Franchise record" button on an application, not from the sidebar; there is no franchise list page.
 
 ### Environment Variables

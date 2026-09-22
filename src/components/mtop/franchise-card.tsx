@@ -125,6 +125,96 @@ function C({
   )
 }
 
+/**
+ * The right-hand edge of the printable area, taken from the terms block, which
+ * runs from x=27.4 for 577.9pt. Nothing may cross it.
+ */
+const CONTENT_RIGHT = 600
+
+/**
+ * Approximate advance width of a string, in points.
+ *
+ * The card is rendered on the server and printed straight away, so there is no
+ * layout pass to measure against — a value's width has to be estimated before
+ * it is drawn. These are Poppins' proportions bucketed by character class, and
+ * they lean generous: over-estimating shrinks a line slightly more than it
+ * needed, while under-estimating pushes it off the paper, which is the bug
+ * this exists to prevent.
+ */
+function estimateWidth(text: string, size: number, weight: number): number {
+  let ems = 0
+  for (const char of text) {
+    if (char === " ") ems += 0.26
+    else if ("mwMW".includes(char)) ems += 0.92
+    else if ("iltfjIJ.,'`-:;()".includes(char)) ems += 0.32
+    else if (char >= "A" && char <= "Z") ems += 0.68
+    else if (char >= "0" && char <= "9") ems += 0.62
+    else ems += 0.58
+  }
+  // Bold is a touch wider than regular at the same size.
+  return ems * size * (weight >= 700 ? 1.04 : 1)
+}
+
+/**
+ * A data value that must not run past the edge of the paper.
+ *
+ * Long values — a purok spelled out in full, a double-barrelled operator name —
+ * used to keep going at full size, over the border and off the page, because
+ * every run on this card is absolutely positioned and set to `nowrap`. This
+ * shrinks the type until the string fits the space it has, down to `minSize`,
+ * and clips at the boundary as a last resort so the overflow can never come
+ * back. Values short enough to fit are untouched, so the card is unchanged for
+ * almost every permit.
+ */
+function Fit({
+  x,
+  y,
+  size,
+  minSize = 9,
+  right = CONTENT_RIGHT,
+  children,
+  font = "poppins",
+  weight = 400,
+  color = "#000",
+}: {
+  x: number
+  y: number
+  size: number
+  minSize?: number
+  right?: number
+  children: string
+  font?: "poppins" | "oswald" | "playfair"
+  weight?: number
+  color?: string
+}) {
+  const available = right - x
+  const estimated = estimateWidth(children, size, weight)
+  const fitted =
+    estimated > available
+      ? Math.max(minSize, size * (available / estimated))
+      : size
+
+  return (
+    <span
+      style={{
+        position: "absolute",
+        left: `${x}pt`,
+        top: `${y}pt`,
+        maxWidth: `${available}pt`,
+        overflow: "hidden",
+        fontFamily: `var(--card-${font})`,
+        fontSize: `${fitted}pt`,
+        fontWeight: weight,
+        color,
+        lineHeight: LINE_HEIGHT[font],
+        whiteSpace: "nowrap",
+      }}
+    >
+      {children}
+    </span>
+  )
+}
+
 function Photo({ url, y }: { url: string | null; y: number }) {
   if (!url) return null
   return (
@@ -315,9 +405,9 @@ export function FranchiseCard({ data }: { data: FranchiseCardData }) {
         </T>
       ))}
       {operatorRows.map(([label, value], i) => (
-        <T key={`v-${label}`} x={333.6} y={268.2 + i * 16.5} size={15.1} weight={700}>
+        <Fit key={`v-${label}`} x={333.6} y={268.2 + i * 16.5} size={15.1} weight={700}>
           {value}
-        </T>
+        </Fit>
       ))}
 
       {/* Vehicle details */}
@@ -327,9 +417,9 @@ export function FranchiseCard({ data }: { data: FranchiseCardData }) {
         </T>
       ))}
       {vehicleRows.map(([label, value], i) => (
-        <T key={`v-${label}`} x={333.6} y={350.7 + i * 16.5} size={15.1} weight={700}>
+        <Fit key={`v-${label}`} x={333.6} y={350.7 + i * 16.5} size={15.1} weight={700}>
           {value}
-        </T>
+        </Fit>
       ))}
 
       {/* Authorized driver */}
@@ -343,15 +433,15 @@ export function FranchiseCard({ data }: { data: FranchiseCardData }) {
       <T x={224.2} y={488.3} size={15.1}>
         Name:
       </T>
-      <T x={335.6} y={488.3} size={15.1} weight={700}>
+      <Fit x={335.6} y={488.3} size={15.1} weight={700}>
         {data.driverName}
-      </T>
+      </Fit>
       <T x={224.2} y={504.8} size={15.1}>
         Address:
       </T>
-      <T x={335.6} y={504.8} size={15.1} weight={700}>
+      <Fit x={335.6} y={504.8} size={15.1} weight={700}>
         {data.driverAddress}
-      </T>
+      </Fit>
 
       <C cx={398.9} y={534.3} size={16.5} weight={700} color={RED}>
         If this is NOT your driver,
