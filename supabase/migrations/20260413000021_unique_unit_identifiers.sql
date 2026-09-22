@@ -97,7 +97,7 @@ $$;
 -- 'active' releases the number. normalize_unit_identifier is STRICT, so NULL
 -- normalises to NULL and the predicate drops the row.
 
-CREATE UNIQUE INDEX idx_franchises_unique_body_number
+CREATE UNIQUE INDEX IF NOT EXISTS idx_franchises_unique_body_number
   ON mtop.mtop_franchises (mtop.normalize_unit_identifier(tricycle_body_number))
   WHERE franchise_status = 'active'
     AND mtop.normalize_unit_identifier(tricycle_body_number) <> '';
@@ -105,7 +105,7 @@ CREATE UNIQUE INDEX idx_franchises_unique_body_number
 COMMENT ON INDEX mtop.idx_franchises_unique_body_number IS
   'One body number per active franchise. Matching ignores case and punctuation.';
 
-CREATE UNIQUE INDEX idx_franchises_unique_plate_number
+CREATE UNIQUE INDEX IF NOT EXISTS idx_franchises_unique_plate_number
   ON mtop.mtop_franchises (mtop.normalize_unit_identifier(plate_number))
   WHERE franchise_status = 'active'
     AND mtop.normalize_unit_identifier(plate_number) <> '';
@@ -135,25 +135,25 @@ RETURNS TABLE (
 LANGUAGE sql
 STABLE
 AS $$
-  SELECT 'tricycle_body_number'::TEXT, f.id, f.mtop_number, f.applicant_name, f.tricycle_body_number
+  (SELECT 'tricycle_body_number'::TEXT, f.id, f.mtop_number, f.applicant_name, f.tricycle_body_number
   FROM mtop.mtop_franchises f
   WHERE f.franchise_status = 'active'
     AND (p_exclude_franchise_id IS NULL OR f.id <> p_exclude_franchise_id)
     AND mtop.normalize_unit_identifier(p_body_number) <> ''
     AND mtop.normalize_unit_identifier(f.tricycle_body_number)
         = mtop.normalize_unit_identifier(p_body_number)
-  LIMIT 1
+  LIMIT 1)
 
   UNION ALL
 
-  SELECT 'plate_number'::TEXT, f.id, f.mtop_number, f.applicant_name, f.plate_number
+  (SELECT 'plate_number'::TEXT, f.id, f.mtop_number, f.applicant_name, f.plate_number
   FROM mtop.mtop_franchises f
   WHERE f.franchise_status = 'active'
     AND (p_exclude_franchise_id IS NULL OR f.id <> p_exclude_franchise_id)
     AND mtop.normalize_unit_identifier(p_plate_number) <> ''
     AND mtop.normalize_unit_identifier(f.plate_number)
         = mtop.normalize_unit_identifier(p_plate_number)
-  LIMIT 1
+  LIMIT 1)
 $$;
 
 GRANT EXECUTE ON FUNCTION mtop.find_unit_identifier_conflict(TEXT, TEXT, UUID)
