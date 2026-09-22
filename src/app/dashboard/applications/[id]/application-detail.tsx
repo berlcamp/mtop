@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { PageHeader } from "@/components/layout/page-header"
@@ -17,6 +17,7 @@ import { StatusBadge } from "@/components/shared/status-badge"
 import { ApprovalStepper } from "@/components/shared/approval-stepper"
 import { TimelineLog } from "@/components/shared/timeline-log"
 import { HistoryTimeline } from "@/components/shared/history-timeline"
+import { BusyOverlay } from "@/components/shared/busy-overlay"
 import { RequirementChecklist } from "@/components/mtop/requirement-checklist"
 import { FranchisePhotosCard } from "@/components/mtop/franchise-photos-card"
 import { TricycleDetailsCard } from "@/components/mtop/tricycle-details-card"
@@ -55,6 +56,21 @@ import type { MtopStatus } from "@/types/database"
 import type { FranchiseHistoryEvent } from "@/lib/audit"
 import type { SystemSettings } from "@/lib/actions/settings"
 
+/**
+ * What the overlay says while a decision is being recorded. Granting is named
+ * apart from the rest because it is the one that does more than move a status:
+ * it issues the number, replaces the unit, transfers the owner.
+ */
+function busyLabelFor(
+  status: MtopStatus,
+  action: "approved" | "rejected" | "returned" | "forwarded"
+): string {
+  if (status === "granted") return "Granting the MTOP…"
+  if (action === "rejected") return "Rejecting the application…"
+  if (action === "returned") return "Returning the application…"
+  return `Forwarding to ${stageName(status)}…`
+}
+
 export function ApplicationDetail({
   application,
   settings,
@@ -69,6 +85,13 @@ export function ApplicationDetail({
   const { can } = usePermissions()
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  // router.refresh() re-renders on the server; a transition is what tells us
+  // when that has actually landed, so the overlay can stay up until the page
+  // in front of the clerk is the one the decision produced.
+  const [refreshing, startRefresh] = useTransition()
+  // What the overlay says. Held in state because by the time it is up, the
+  // status it belongs to may already have been written.
+  const [busyLabel, setBusyLabel] = useState<string | null>(null)
   const [remarks, setRemarks] = useState("")
   // Set when a return was attempted with the field empty, so the field itself
   // shows the problem rather than only the alert at the top of the page.
@@ -107,6 +130,7 @@ export function ApplicationDetail({
 
     setRemarksMissing(false)
     setLoading(true)
+    setBusyLabel(busyLabelFor(newStatus, action))
     setError(null)
 
     const result = await updateApplicationStatus(
@@ -119,12 +143,12 @@ export function ApplicationDetail({
     if (result.error) {
       setError(result.error)
       setLoading(false)
+      setBusyLabel(null)
       return
     }
 
-    router.refresh()
-    setLoading(false)
     setRemarks("")
+    finishWithRefresh()
   }
 
   // A returned application resumes at the stage it was returned from; the
@@ -133,6 +157,7 @@ export function ApplicationDetail({
 
   async function handleReopen() {
     setLoading(true)
+    setBusyLabel("Reopening the application…")
     setError(null)
 
     const result = await reopenApplication(application.id, remarks || undefined)
@@ -140,12 +165,24 @@ export function ApplicationDetail({
     if (result.error) {
       setError(result.error)
       setLoading(false)
+      setBusyLabel(null)
       return
     }
 
-    router.refresh()
-    setLoading(false)
     setRemarks("")
+    finishWithRefresh()
+  }
+
+  /**
+   * Hands the overlay over to the refresh. `loading` drops only once the
+   * transition owns the wait, so there is no frame in between where the page
+   * is live again but still showing the state the decision replaced.
+   */
+  function finishWithRefresh() {
+    startRefresh(() => {
+      router.refresh()
+    })
+    setLoading(false)
   }
 
   // An administrator can correct any stage until the permit is granted. An
@@ -164,8 +201,13 @@ export function ApplicationDetail({
     (r: { is_verified: boolean }) => r.is_verified
   ).length
 
+  // The overlay blocks the pointer; `inert` closes the keyboard route into the
+  // page behind it, so a decision in flight cannot be raced by a tab and a
+  // return key. Both end together when the refreshed page arrives.
+  const busy = loading || refreshing
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" inert={busy || undefined}>
       <PageHeader
         title={franchise?.mtop_number ?? "Pending MTOP Number"}
         subtitle={`${transactionType?.name ?? "Application"} · ${franchise?.applicant_name ?? ""} — ${franchise?.route ?? "No route"}`}
@@ -627,6 +669,14 @@ export function ApplicationDetail({
           </Card>
         </div>
       </div>
+
+      {/* Portalled out of this element, so `inert` above does not reach it. */}
+      {busy && (
+        <BusyOverlay
+          label={busyLabel ?? "Working…"}
+          detail="Please wait — this is being recorded."
+        />
+      )}
     </div>
   )
 }
