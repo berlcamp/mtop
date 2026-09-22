@@ -10,7 +10,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
-import { Loader2, Search, ArrowLeft } from "lucide-react"
+import { Loader2, Search, ArrowLeft, ChevronRight } from "lucide-react"
 import { searchFranchises } from "@/lib/actions/applications"
 import type { MtopFranchise, TransactionType } from "@/types/database"
 
@@ -121,39 +121,46 @@ export function FranchiseLookup({
                       : ""
 
                 return (
-                  <li
-                    key={f.id}
-                    className="flex items-center justify-between gap-3 p-3"
-                  >
-                    <div className="min-w-0">
-                      <div className="flex items-baseline gap-2">
-                        <span className="font-mono text-sm font-semibold">
-                          {f.mtop_number ?? "— (not yet granted)"}
-                        </span>
-                        <span className="font-medium">{f.applicant_name}</span>
-                      </div>
-                      <div className="text-xs text-muted-foreground mt-0.5">
-                        Plate {f.plate_number ?? "—"} · Body{" "}
-                        {f.tricycle_body_number ?? "—"} ·{" "}
-                        {f.granted_until
-                          ? `Expires ${f.granted_until}`
-                          : "Never granted"}
-                      </div>
-                      {blockedReason && (
-                        <p className="mt-1 text-xs text-destructive">
-                          {blockedReason}
-                        </p>
-                      )}
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
+                  // The whole row is the control, not just the button at the
+                  // end of it — a real <button> rather than a div with an
+                  // onClick, so it keeps focus, Enter and Space, and gets
+                  // disabled semantics for the rows that can't be filed
+                  // against.
+                  <li key={f.id}>
+                    <button
+                      type="button"
                       disabled={!!blockedReason}
                       onClick={() => onSelectFranchise(f)}
-                      title={blockedReason}
+                      title={blockedReason || undefined}
+                      className="flex w-full items-center justify-between gap-3 p-3 text-left transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:bg-transparent"
                     >
-                      Select
-                    </Button>
+                      <div className="min-w-0">
+                        <div className="flex items-baseline gap-2">
+                          <span className="font-mono text-sm font-semibold">
+                            {f.mtop_number ?? "— (not yet granted)"}
+                          </span>
+                          <span className="font-medium">{f.applicant_name}</span>
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-0.5">
+                          Plate {f.plate_number ?? "—"} · Body{" "}
+                          {f.tricycle_body_number ?? "—"} ·{" "}
+                          {f.granted_until
+                            ? `Expires ${f.granted_until}`
+                            : "Never granted"}
+                        </div>
+                        {blockedReason && (
+                          <p className="mt-1 text-xs text-destructive">
+                            {blockedReason}
+                          </p>
+                        )}
+                      </div>
+                      {!blockedReason && (
+                        <ChevronRight
+                          aria-hidden
+                          className="h-4 w-4 shrink-0 text-muted-foreground"
+                        />
+                      )}
+                    </button>
                   </li>
                 )
               })}
