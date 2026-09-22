@@ -265,8 +265,13 @@ export function ApplicationsTable({
                         {app.franchise?.mtop_number ?? "—"}
                       </Link>
                     </TableCell>
-                    <TableCell className="font-medium text-foreground">
-                      {app.franchise?.applicant_name ?? "—"}
+                    <TableCell className="font-medium">
+                      <Link
+                        href={`/dashboard/applications/${app.id}`}
+                        className="text-foreground hover:text-primary hover:underline underline-offset-2"
+                      >
+                        {app.franchise?.applicant_name ?? "—"}
+                      </Link>
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground hidden lg:table-cell">
                       {app.transaction_type?.name ?? "—"}
