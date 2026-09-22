@@ -60,3 +60,11 @@ export function StatusBadge({ status }: { status: MtopStatus }) {
 export function getStatusLabel(status: MtopStatus): string {
   return statusConfig[status]?.label ?? status
 }
+
+/** The statuses in pipeline order, then the two side exits. */
+export const MTOP_STATUSES = Object.keys(statusConfig) as MtopStatus[]
+
+/** The colour a status carries in the table, for filters that show a swatch. */
+export function getStatusDot(status: MtopStatus): string {
+  return statusConfig[status]?.dot ?? "bg-muted-foreground"
+}

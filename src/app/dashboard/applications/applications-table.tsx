@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useMemo, useState, useCallback } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import {
@@ -13,15 +13,22 @@ import {
 } from "@/components/ui/table"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { StatusBadge } from "@/components/shared/status-badge"
+import { FacetedFilter } from "@/components/shared/faceted-filter"
+import {
+  MTOP_STATUSES,
+  StatusBadge,
+  getStatusDot,
+  getStatusLabel,
+} from "@/components/shared/status-badge"
 import { ExpirationBadge } from "@/components/shared/expiration-badge"
-import { Search, ChevronLeft, ChevronRight, FileText } from "lucide-react"
+import { Search, ChevronLeft, ChevronRight, FileText, X } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
 import { createClient } from "@/lib/supabase/client"
-import { getExpirationStatus } from "@/lib/utils/permit-expiration"
+import {
+  expirationDateBounds,
+  getExpirationStatus,
+} from "@/lib/utils/permit-expiration"
 import type {
-  MtopStatus,
   MtopApplication,
   MtopFranchise,
   TransactionType,
@@ -32,43 +39,78 @@ type ApplicationRow = MtopApplication & {
   transaction_type: TransactionType | null
 }
 
-const STATUS_TABS: { value: string; label: string }[] = [
-  { value: "all", label: "All" },
-  { value: "for_verification", label: "Verification" },
-  { value: "for_inspection", label: "Inspection" },
-  { value: "for_assessment", label: "Assessment" },
-  { value: "for_approval", label: "Approval" },
-  { value: "granted", label: "Granted" },
-  { value: "rejected", label: "Rejected" },
-  { value: "returned", label: "Returned" },
-]
-
 const PAGE_SIZE = 20
 
-export function ApplicationsTable({
-  searchParams: searchParamsPromise,
-}: {
-  searchParams: Promise<{ status?: string; search?: string; page?: string }>
-}) {
+const EXPIRATION_OPTIONS = [
+  { label: "Expired", value: "expired", dot: "bg-red-500" },
+  { label: "Due for Renewal", value: "due_for_renewal", dot: "bg-amber-500" },
+  { label: "Active", value: "active", dot: "bg-green-500" },
+]
+
+const STATUS_OPTIONS = MTOP_STATUSES.map((status) => ({
+  label: getStatusLabel(status),
+  value: status,
+  dot: getStatusDot(status),
+}))
+
+/** The fields the search box looks in, on the franchise behind the application. */
+const SEARCH_FIELDS = [
+  "mtop_number",
+  "applicant_name",
+  "tricycle_body_number",
+  "plate_number",
+]
+
+/**
+ * PostgREST reads `,` `.` and `(` as grammar inside an `or(...)`, and an
+ * operator name can't be quoted but its value can — so quoting the value is
+ * what lets a clerk search "DELA CRUZ, JUAN" without the filter falling apart.
+ */
+function orSearchFilter(term: string): string {
+  const escaped = term.replace(/[\\"]/g, (c) => `\\${c}`)
+  return SEARCH_FIELDS.map((f) => `${f}.ilike."%${escaped}%"`).join(",")
+}
+
+/** A comma-joined URL param, read as the list it stands for. */
+function readList(raw: string): string[] {
+  return raw.split(",").filter(Boolean)
+}
+
+export function ApplicationsTable() {
   const router = useRouter()
   const urlSearchParams = useSearchParams()
 
-  const status = urlSearchParams.get("status") || "all"
   const search = urlSearchParams.get("search") || ""
   const page = parseInt(urlSearchParams.get("page") || "1", 10)
+
+  // Memoised on the raw strings, not on the params object: these feed the
+  // fetch's dependency list, where a fresh array on every render would loop.
+  const statusParam = urlSearchParams.get("status") || ""
+  const typeParam = urlSearchParams.get("type") || ""
+  const expirationParam = urlSearchParams.get("expiration") || ""
+  const statuses = useMemo(() => readList(statusParam), [statusParam])
+  const typeCodes = useMemo(() => readList(typeParam), [typeParam])
+  const expirations = useMemo(() => readList(expirationParam), [expirationParam])
 
   const [applications, setApplications] = useState<ApplicationRow[]>([])
   const [count, setCount] = useState(0)
   const [loading, setLoading] = useState(true)
   const [searchInput, setSearchInput] = useState(search)
+  const [transactionTypes, setTransactionTypes] = useState<
+    TransactionType[] | null
+  >(null)
   const [settings, setSettings] = useState<{
     permit_validity_years: number
     renewal_window_days: number
   }>({ permit_validity_years: 3, renewal_window_days: 90 })
 
-  const expiration = urlSearchParams.get("expiration") || ""
-
   const supabase = createClient()
+
+  const isFiltered =
+    !!search ||
+    statuses.length > 0 ||
+    typeCodes.length > 0 ||
+    expirations.length > 0
 
   // Fetch system settings on mount
   useEffect(() => {
@@ -88,44 +130,111 @@ export function ApplicationsTable({
       })
   }, [supabase])
 
+  // The transaction filter's options, and the code → id map the query needs.
+  // Read straight from mtop.transaction_types so a reworded transaction shows
+  // its new name here without a code change, same as everywhere else.
+  useEffect(() => {
+    supabase
+      .schema("mtop")
+      .from("transaction_types")
+      .select("*")
+      .eq("is_active", true)
+      .order("sort_order")
+      .then(({ data }: { data: TransactionType[] | null }) => {
+        setTransactionTypes(data ?? [])
+      })
+  }, [supabase])
+
+  const updateParams = useCallback(
+    (updates: Record<string, string>) => {
+      const params = new URLSearchParams(urlSearchParams.toString())
+      for (const [key, value] of Object.entries(updates)) {
+        if (value) {
+          params.set(key, value)
+        } else {
+          params.delete(key)
+        }
+      }
+      const query = params.toString()
+      // replace, not push: a filter is a view of this page, not a place to go
+      // back to one keystroke at a time.
+      router.replace(
+        query ? `/dashboard/applications?${query}` : "/dashboard/applications",
+        { scroll: false }
+      )
+    },
+    [router, urlSearchParams]
+  )
+
+  // Keep the box in step with the URL when the filter is cleared or a link
+  // arrives with a search already on it.
+  useEffect(() => {
+    setSearchInput(search)
+  }, [search])
+
+  // Search as you type, a beat behind, so every letter isn't a round trip.
+  useEffect(() => {
+    if (searchInput === search) return
+    const timer = setTimeout(
+      () => updateParams({ search: searchInput, page: "" }),
+      350
+    )
+    return () => clearTimeout(timer)
+  }, [searchInput, search, updateParams])
+
   const fetchApplications = useCallback(async () => {
+    // A type filter names codes; it can't be applied until the codes have ids.
+    if (typeCodes.length > 0 && transactionTypes === null) return
+
     setLoading(true)
 
-    // If a search query is set, look up matching franchise IDs first.
-    let franchiseIds: string[] | undefined
-    if (search) {
-      const { data: matches } = await supabase
-        .schema("mtop")
-        .from("mtop_franchises")
-        .select("id")
-        .or(
-          `mtop_number.ilike.%${search}%,applicant_name.ilike.%${search}%`
-        )
-      const ids = (matches ?? []).map((m: { id: string }) => m.id)
-      if (ids.length === 0) {
-        setApplications([])
-        setCount(0)
-        setLoading(false)
-        return
-      }
-      franchiseIds = ids
-    }
-
+    // !inner so a filter on the franchise — the search box, the permit expiry —
+    // narrows the applications themselves rather than just blanking the join.
+    // franchise_id is NOT NULL, so nothing is lost by it.
     let query = supabase
       .schema("mtop")
       .from("mtop_applications")
       .select(
-        "*, franchise:mtop_franchises(*), transaction_type:transaction_types(id, code, name)",
+        "*, franchise:mtop_franchises!inner(*), transaction_type:transaction_types(id, code, name)",
         { count: "exact" }
       )
       .order("created_at", { ascending: false })
 
-    if (status !== "all") {
-      query = query.eq("status", status as MtopStatus)
+    if (statuses.length > 0) {
+      query = query.in("status", statuses)
     }
 
-    if (franchiseIds) {
-      query = query.in("franchise_id", franchiseIds)
+    if (typeCodes.length > 0) {
+      const ids = (transactionTypes ?? [])
+        .filter((t) => typeCodes.includes(t.code))
+        .map((t) => t.id)
+      // An unknown code in the URL must match nothing, not everything.
+      query = query.in("transaction_type_id", ids.length > 0 ? ids : [""])
+    }
+
+    if (search) {
+      query = query.or(orSearchFilter(search), { referencedTable: "franchise" })
+    }
+
+    if (expirations.length > 0) {
+      const { today, windowEnd } = expirationDateBounds(
+        settings.renewal_window_days
+      )
+      const clauses: string[] = []
+      if (expirations.includes("expired")) {
+        clauses.push(`granted_until.lt.${today}`)
+      }
+      if (expirations.includes("due_for_renewal")) {
+        clauses.push(
+          `and(granted_until.gte.${today},granted_until.lte.${windowEnd})`
+        )
+      }
+      if (expirations.includes("active")) {
+        clauses.push(`granted_until.gt.${windowEnd}`)
+      }
+      if (clauses.length > 0) {
+        query = query.or(clauses.join(","), { referencedTable: "franchise" })
+      }
     }
 
     const from = (page - 1) * PAGE_SIZE
@@ -137,75 +246,92 @@ export function ApplicationsTable({
     setApplications((data as ApplicationRow[]) ?? [])
     setCount(totalCount ?? 0)
     setLoading(false)
-  }, [supabase, status, search, page])
+  }, [
+    supabase,
+    statuses,
+    typeCodes,
+    transactionTypes,
+    search,
+    expirations,
+    settings.renewal_window_days,
+    page,
+  ])
 
   useEffect(() => {
     fetchApplications()
   }, [fetchApplications])
 
-  function updateParams(updates: Record<string, string>) {
-    const params = new URLSearchParams(urlSearchParams.toString())
-    for (const [key, value] of Object.entries(updates)) {
-      if (value) {
-        params.set(key, value)
-      } else {
-        params.delete(key)
-      }
-    }
-    router.push(`/dashboard/applications?${params.toString()}`)
-  }
+  const typeOptions = useMemo(
+    () =>
+      (transactionTypes ?? []).map((t) => ({ label: t.name, value: t.code })),
+    [transactionTypes]
+  )
 
-  function handleSearch(e: React.FormEvent) {
-    e.preventDefault()
-    updateParams({ search: searchInput, page: "" })
-  }
-
-  // Client-side expiration filtering (when linked from dashboard renewal cards)
-  const filteredApplications = expiration
-    ? applications.filter((app) => {
-        if (app.status !== "granted" || !app.franchise?.granted_until)
-          return false
-        const info = getExpirationStatus(
-          app.franchise.granted_until,
-          settings.renewal_window_days
-        )
-        return info.status === expiration
-      })
-    : applications
-
-  const displayCount = expiration ? filteredApplications.length : count
-  const totalPages = Math.ceil(displayCount / PAGE_SIZE)
+  const totalPages = Math.ceil(count / PAGE_SIZE)
 
   return (
     <div className="space-y-4">
-      {/* Filters row */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <Tabs
-          value={status}
-          onValueChange={(value) =>
-            updateParams({ status: value === "all" ? "" : (value as string), page: "" })
-          }
-        >
-          <TabsList variant="line">
-            {STATUS_TABS.map((tab) => (
-              <TabsTrigger key={tab.value} value={tab.value}>
-                {tab.label}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
+      {/* Toolbar */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Search name, MTOP #, body # or plate..."
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            className="h-8 w-[220px] pl-8 lg:w-[280px]"
+          />
+        </div>
 
-        <form onSubmit={handleSearch} className="flex gap-2">
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-            <Input
-              placeholder="Search applicant or MTOP #..."
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              className="pl-8 w-60 h-8"
-            />
-          </div>
-        </form>
+        <FacetedFilter
+          title="Status"
+          options={STATUS_OPTIONS}
+          selected={statuses}
+          onChange={(values) =>
+            updateParams({ status: values.join(","), page: "" })
+          }
+        />
+
+        <FacetedFilter
+          title="Transaction"
+          options={typeOptions}
+          selected={typeCodes}
+          onChange={(values) =>
+            updateParams({ type: values.join(","), page: "" })
+          }
+        />
+
+        <FacetedFilter
+          title="Permit Expiry"
+          options={EXPIRATION_OPTIONS}
+          selected={expirations}
+          onChange={(values) =>
+            updateParams({ expiration: values.join(","), page: "" })
+          }
+        />
+
+        {isFiltered && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() =>
+              updateParams({
+                search: "",
+                status: "",
+                type: "",
+                expiration: "",
+                page: "",
+              })
+            }
+          >
+            Reset
+            <X className="ml-1.5 h-3.5 w-3.5" />
+          </Button>
+        )}
+
+        <p className="ml-auto text-xs text-muted-foreground tabular-nums">
+          {loading ? "…" : `${count} ${count === 1 ? "application" : "applications"}`}
+        </p>
       </div>
 
       {/* Table */}
@@ -246,14 +372,16 @@ export function ApplicationsTable({
                 </TableCell>
               </TableRow>
             ) : (
-              filteredApplications.map((app) => {
-                const expirationInfo =
-                  app.status === "granted" && app.franchise?.granted_until
-                    ? getExpirationStatus(
-                        app.franchise.granted_until,
-                        settings.renewal_window_days
-                      )
-                    : null
+              applications.map((app) => {
+                // The expiry belongs to the franchise, not to this application:
+                // a renewal still sitting in verification is exactly the row
+                // where how overdue the operator is matters most.
+                const expirationInfo = app.franchise?.granted_until
+                  ? getExpirationStatus(
+                      app.franchise.granted_until,
+                      settings.renewal_window_days
+                    )
+                  : null
 
                 return (
                   <TableRow
@@ -317,9 +445,9 @@ export function ApplicationsTable({
           <p className="text-xs text-muted-foreground">
             Showing{" "}
             <span className="font-medium text-foreground">
-              {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, displayCount)}
+              {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, count)}
             </span>{" "}
-            of <span className="font-medium text-foreground">{displayCount}</span>
+            of <span className="font-medium text-foreground">{count}</span>
           </p>
           <div className="flex items-center gap-1">
             <Button

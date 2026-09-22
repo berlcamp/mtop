@@ -211,6 +211,12 @@ Page files (`page.tsx`) are Server Components; heavy client logic is split into 
 
 Both routes share `PrintControls` (`src/app/print/print-controls.tsx`) and `print.css`, which sets the 8.5 × 13in page.
 
+`/dashboard/applications` filters in the database, not after paging. The toolbar is the shape the HRIS employee list uses — a search box, then a multi-select popover per column (`FacetedFilter`, `src/components/shared/faceted-filter.tsx`) — and every choice lives in the URL (`search`, `status`, `type`, `expiration`, `page`, each a comma-joined list), so a filtered view can be linked, bookmarked and reloaded. The dashboard's pipeline and renewal cards link straight into it.
+
+Search covers the franchise behind the application — MTOP number, applicant, body number, plate — through an `!inner` join, which is also what lets the row count reflect the filter. Values go into the `or(...)` **quoted**, because PostgREST reads `,` `.` and `(` as grammar: unquoted, a clerk searching `DELA CRUZ, JUAN` gets a parse error rather than a result.
+
+Permit expiry is a filter now rather than an invisible URL parameter. `expirationDateBounds()` (`src/lib/utils/permit-expiration.ts`) states the three statuses as bounds on the `granted_until` DATE column, and `getExpirationStatus()` reckons the same boundaries in whole days in office time — the ones `getRenewalStats()` counts by — so a dashboard card and the list it links to report the same number, and no row is selected as expired while its badge reads due for renewal. The expiry column reads the franchise, so it shows on a renewal still in verification, which is the row where how overdue the operator is matters most.
+
 `/dashboard/franchises/[id]` is the franchise (operator) record — identity, current unit and driver, every transaction filed against it, and the full audit trail. It is reached from the "Franchise record" button on an application, not from the sidebar; there is no franchise list page.
 
 ### Environment Variables
