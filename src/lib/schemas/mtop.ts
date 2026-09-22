@@ -168,6 +168,10 @@ export const assessmentSchema = z.object({
   late_renewal_penalty: z.coerce.number().min(0),
   change_of_motor_fee: z.coerce.number().min(0),
   replacement_plate_fee: z.coerce.number().min(0),
+  // Closure only; default 0 so an assessment filed for any other transaction
+  // doesn't have to mention them.
+  certification_fee: z.coerce.number().min(0).default(0),
+  closure_fee: z.coerce.number().min(0).default(0),
 })
 
 export type AssessmentFormValues = z.infer<typeof assessmentSchema>
@@ -203,6 +207,12 @@ export const systemSettingsSchema = z.object({
     .string()
     .trim()
     .max(50, "Contact number is too long")
+    .default(""),
+  // Printed under "APPROVED:" on the confirmation slip.
+  mayor_name: z
+    .string()
+    .trim()
+    .max(80, "Name is too long")
     .default(""),
 })
 

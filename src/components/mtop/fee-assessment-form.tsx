@@ -27,6 +27,8 @@ import {
   STANDARD_FEES,
   FEE_LABELS,
   calculateLatePenalty,
+  feeScheduleFor,
+  feeKeysFor,
 } from "@/lib/fees"
 import type { MtopStatus } from "@/types/database"
 
@@ -38,6 +40,8 @@ interface FeeAssessmentFormProps {
   canAssess: boolean
   canApproveAssessment: boolean
   status: MtopStatus
+  /** Which transaction is being priced; a closure is priced differently. */
+  transactionCode?: string | null
   /** Administrators may restate the fees at any stage before granting. */
   adminEdit?: boolean
 }
@@ -49,6 +53,7 @@ export function FeeAssessmentForm({
   canAssess,
   canApproveAssessment,
   status,
+  transactionCode,
   adminEdit = false,
 }: FeeAssessmentFormProps) {
   const [reassessing, setReassessing] = useState(false)
@@ -83,6 +88,7 @@ export function FeeAssessmentForm({
     <AssessmentFormInner
       applicationId={applicationId}
       dueDate={dueDate}
+      transactionCode={transactionCode}
       // A revision starts from the figures already assessed, so only the line
       // that was wrong has to be retyped.
       previous={existingAssessment}
@@ -95,12 +101,14 @@ export function FeeAssessmentForm({
 function AssessmentFormInner({
   applicationId,
   dueDate,
+  transactionCode,
   previous,
   onCancel,
   onSaved,
 }: {
   applicationId: string
   dueDate: string | null
+  transactionCode?: string | null
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   previous?: any | null
   onCancel?: () => void
@@ -110,17 +118,15 @@ function AssessmentFormInner({
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Standard fees — editable. A revision starts from what was assessed before;
-  // a first assessment from the standard schedule.
+  // A closure owes the certification fee and the payment for closure and
+  // nothing else; everything else owes the annual schedule. A revision starts
+  // from what was assessed before, a first assessment from the schedule.
+  const isClosure = transactionCode === "closure"
   const [fees, setFees] = useState<Record<string, number>>(() => {
-    const base: Record<string, number> = {
-      ...STANDARD_FEES,
-      late_renewal_penalty: dueDate
-        ? calculateLatePenalty(new Date(dueDate), new Date())
-        : 0,
-      change_of_motor_fee: 0,
-      replacement_plate_fee: 0,
-    }
+    const base = feeScheduleFor(
+      transactionCode,
+      dueDate ? calculateLatePenalty(new Date(dueDate), new Date()) : 0
+    )
     if (!previous) return base
     return Object.fromEntries(
       Object.keys(base).map((key) => [key, Number(previous[key] ?? base[key])])
@@ -165,19 +171,25 @@ function AssessmentFormInner({
     setSubmitting(true)
     setError(null)
 
+    // Every column is sent; the ones this transaction cannot be charged are
+    // simply zero. The action vets the same thing, so a stale form can't
+    // price a closure as a renewal.
+    const amount = (key: string) => Number(fees[key] ?? 0)
     const result = await createAssessment(applicationId, {
-      filing_fee: fees.filing_fee,
-      supervision_fee: fees.supervision_fee,
-      confirmation_fee: fees.confirmation_fee,
-      mayors_permit_fee: fees.mayors_permit_fee,
-      franchise_fee: fees.franchise_fee,
-      police_clearance_fee: fees.police_clearance_fee,
-      health_fee: fees.health_fee,
-      legal_research_fee: fees.legal_research_fee,
-      parking_fee: fees.parking_fee,
-      late_renewal_penalty: fees.late_renewal_penalty,
-      change_of_motor_fee: fees.change_of_motor_fee,
-      replacement_plate_fee: fees.replacement_plate_fee,
+      filing_fee: amount("filing_fee"),
+      supervision_fee: amount("supervision_fee"),
+      confirmation_fee: amount("confirmation_fee"),
+      mayors_permit_fee: amount("mayors_permit_fee"),
+      franchise_fee: amount("franchise_fee"),
+      police_clearance_fee: amount("police_clearance_fee"),
+      health_fee: amount("health_fee"),
+      legal_research_fee: amount("legal_research_fee"),
+      parking_fee: amount("parking_fee"),
+      late_renewal_penalty: amount("late_renewal_penalty"),
+      change_of_motor_fee: amount("change_of_motor_fee"),
+      replacement_plate_fee: amount("replacement_plate_fee"),
+      certification_fee: amount("certification_fee"),
+      closure_fee: amount("closure_fee"),
     })
 
     if (result.error) {
@@ -212,127 +224,156 @@ function AssessmentFormInner({
           </Alert>
         )}
 
-        {/* Standard fees */}
-        <div className="space-y-3">
-          <p className="text-sm font-medium">Standard Fees</p>
-          {standardFeeKeys.map((key) => (
-            <div
-              key={key}
-              className="flex items-center justify-between gap-4"
-            >
-              <Label className="text-sm flex-1">{FEE_LABELS[key]}</Label>
+        {/* A closure is priced on its own terms: these two, and nothing
+            else. The annual fees do not apply because nothing is being
+            granted for a year. */}
+        {isClosure ? (
+          <div className="space-y-3">
+            <p className="text-sm font-medium">Closure Fees</p>
+            {feeKeysFor(transactionCode).map((key) => (
+              <div key={key} className="flex items-center justify-between gap-4">
+                <Label className="text-sm flex-1">{FEE_LABELS[key]}</Label>
+                <div className="flex items-center gap-1.5 w-32">
+                  <span className="text-sm text-muted-foreground">₱</span>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={fees[key] ?? 0}
+                    onChange={(e) => updateFee(key, e.target.value)}
+                    className="text-right h-7 text-sm"
+                    disabled={submitting}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <>
+          {/* Standard fees */}
+          <div className="space-y-3">
+            <p className="text-sm font-medium">Standard Fees</p>
+            {standardFeeKeys.map((key) => (
+              <div
+                key={key}
+                className="flex items-center justify-between gap-4"
+              >
+                <Label className="text-sm flex-1">{FEE_LABELS[key]}</Label>
+                <div className="flex items-center gap-1.5 w-32">
+                  <span className="text-sm text-muted-foreground">₱</span>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={fees[key]}
+                    onChange={(e) => updateFee(key, e.target.value)}
+                    className="text-right h-7 text-sm"
+                    disabled={submitting}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <Separator />
+
+          {/* Late renewal penalty */}
+          <div className="space-y-3">
+            <p className="text-sm font-medium">Late Renewal Penalty</p>
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <Label className="text-sm">{FEE_LABELS.late_renewal_penalty}</Label>
+                {dueDate && (
+                  <p className="text-xs text-muted-foreground">
+                    Due date: {dueDate}
+                  </p>
+                )}
+                {!dueDate && (
+                  <p className="text-xs text-muted-foreground">
+                    No due date set — penalty defaults to ₱0.00
+                  </p>
+                )}
+              </div>
               <div className="flex items-center gap-1.5 w-32">
                 <span className="text-sm text-muted-foreground">₱</span>
                 <Input
                   type="number"
                   step="0.01"
                   min="0"
-                  value={fees[key]}
-                  onChange={(e) => updateFee(key, e.target.value)}
+                  value={fees.late_renewal_penalty}
+                  onChange={(e) =>
+                    updateFee("late_renewal_penalty", e.target.value)
+                  }
                   className="text-right h-7 text-sm"
                   disabled={submitting}
                 />
               </div>
             </div>
-          ))}
-        </div>
-
-        <Separator />
-
-        {/* Late renewal penalty */}
-        <div className="space-y-3">
-          <p className="text-sm font-medium">Late Renewal Penalty</p>
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <Label className="text-sm">{FEE_LABELS.late_renewal_penalty}</Label>
-              {dueDate && (
-                <p className="text-xs text-muted-foreground">
-                  Due date: {dueDate}
-                </p>
-              )}
-              {!dueDate && (
-                <p className="text-xs text-muted-foreground">
-                  No due date set — penalty defaults to ₱0.00
-                </p>
-              )}
-            </div>
-            <div className="flex items-center gap-1.5 w-32">
-              <span className="text-sm text-muted-foreground">₱</span>
-              <Input
-                type="number"
-                step="0.01"
-                min="0"
-                value={fees.late_renewal_penalty}
-                onChange={(e) =>
-                  updateFee("late_renewal_penalty", e.target.value)
-                }
-                className="text-right h-7 text-sm"
-                disabled={submitting}
-              />
-            </div>
           </div>
-        </div>
 
-        <Separator />
+          <Separator />
 
-        {/* Optional fees */}
-        <div className="space-y-3">
-          <p className="text-sm font-medium">Other Fees (if applicable)</p>
+          {/* Optional fees */}
+          <div className="space-y-3">
+            <p className="text-sm font-medium">Other Fees (if applicable)</p>
 
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
-              <Checkbox
-                checked={changeOfMotor}
-                onCheckedChange={(c) => toggleChangeOfMotor(c as boolean)}
-                disabled={submitting}
-              />
-              <Label className="text-sm cursor-pointer">
-                {FEE_LABELS.change_of_motor_fee}
-              </Label>
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  checked={changeOfMotor}
+                  onCheckedChange={(c) => toggleChangeOfMotor(c as boolean)}
+                  disabled={submitting}
+                />
+                <Label className="text-sm cursor-pointer">
+                  {FEE_LABELS.change_of_motor_fee}
+                </Label>
+              </div>
+              <div className="flex items-center gap-1.5 w-32">
+                <span className="text-sm text-muted-foreground">₱</span>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={fees.change_of_motor_fee}
+                  onChange={(e) =>
+                    updateFee("change_of_motor_fee", e.target.value)
+                  }
+                  className="text-right h-7 text-sm"
+                  disabled={!changeOfMotor || submitting}
+                />
+              </div>
             </div>
-            <div className="flex items-center gap-1.5 w-32">
-              <span className="text-sm text-muted-foreground">₱</span>
-              <Input
-                type="number"
-                step="0.01"
-                min="0"
-                value={fees.change_of_motor_fee}
-                onChange={(e) =>
-                  updateFee("change_of_motor_fee", e.target.value)
-                }
-                className="text-right h-7 text-sm"
-                disabled={!changeOfMotor || submitting}
-              />
+
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  checked={replacementPlate}
+                  onCheckedChange={(c) => toggleReplacementPlate(c as boolean)}
+                  disabled={submitting}
+                />
+                <Label className="text-sm cursor-pointer">
+                  {FEE_LABELS.replacement_plate_fee}
+                </Label>
+              </div>
+              <div className="flex items-center gap-1.5 w-32">
+                <span className="text-sm text-muted-foreground">₱</span>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={fees.replacement_plate_fee}
+                  onChange={(e) =>
+                    updateFee("replacement_plate_fee", e.target.value)
+                  }
+                  className="text-right h-7 text-sm"
+                  disabled={!replacementPlate || submitting}
+                />
+              </div>
             </div>
           </div>
 
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
-              <Checkbox
-                checked={replacementPlate}
-                onCheckedChange={(c) => toggleReplacementPlate(c as boolean)}
-                disabled={submitting}
-              />
-              <Label className="text-sm cursor-pointer">
-                {FEE_LABELS.replacement_plate_fee}
-              </Label>
-            </div>
-            <div className="flex items-center gap-1.5 w-32">
-              <span className="text-sm text-muted-foreground">₱</span>
-              <Input
-                type="number"
-                step="0.01"
-                min="0"
-                value={fees.replacement_plate_fee}
-                onChange={(e) =>
-                  updateFee("replacement_plate_fee", e.target.value)
-                }
-                className="text-right h-7 text-sm"
-                disabled={!replacementPlate || submitting}
-              />
-            </div>
-          </div>
-        </div>
+          </>
+        )}
 
         <Separator />
 
@@ -394,6 +435,8 @@ function AssessmentResult({
     ["late_renewal_penalty", assessment.late_renewal_penalty],
     ["change_of_motor_fee", assessment.change_of_motor_fee],
     ["replacement_plate_fee", assessment.replacement_plate_fee],
+    ["certification_fee", assessment.certification_fee],
+    ["closure_fee", assessment.closure_fee],
   ].filter(([, amount]) => Number(amount) > 0) as [string, number][]
 
   async function handleApprove() {

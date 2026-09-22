@@ -283,6 +283,8 @@ export interface MtopAssessment {
   late_renewal_penalty: number
   change_of_motor_fee: number
   replacement_plate_fee: number
+  certification_fee: number
+  closure_fee: number
   total_amount: number
   approved_by: string | null
   approved_at: string | null

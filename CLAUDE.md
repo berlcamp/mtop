@@ -110,6 +110,14 @@ Only **mandatory, non-conditional** items block forwarding out of verification �
 
 To add or reword a checklist item, `INSERT`/`UPDATE` these tables. Do not add TypeScript arrays of requirement codes.
 
+### Fees
+
+The fee schedule is per transaction, in `src/lib/fees.ts`. `feeScheduleFor(code)` returns what a transaction may be charged and what each line starts at; `feeKeysFor(code)` is the same set without needing a late-renewal figure to hand.
+
+A **closure** is priced on its own terms — the certification fee (₱100) and the payment for closure (₱500), and nothing else, because no annual fee applies when nothing is being granted for a year (`20260413000024_closure_fees.sql`). Everything else gets the annual schedule plus the situational extras, and never the closure fees. `createAssessment()` applies the same rule server-side, zeroing anything outside the applicable set, so a stale form cannot price a closure as a renewal.
+
+Both figures used to sit in the closure checklist as requirements of kind `payment`, where a clerk ticked them like a document. Money owed belongs in the assessment, where it is stated, approved by the CTO head and matched to an official receipt — so migration 24 removes them from `transaction_requirements` and from the per-application rows of any closure still in flight. Granted and rejected applications keep theirs, since that is what was actually asked of the operator at the time. The certification fee stays on the change-of-unit checklist; that transaction's pricing is untouched.
+
 ### Franchise Ownership Rules
 
 Two hard rules, enforced in the database (`20260413000018_one_operator_per_franchise.sql`) so no code path can bypass them:

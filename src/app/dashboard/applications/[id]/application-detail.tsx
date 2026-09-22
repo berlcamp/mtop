@@ -469,6 +469,7 @@ export function ApplicationDetail({
                 canAssess={can("assessment.create")}
                 canApproveAssessment={can("assessment.approve")}
                 status={application.status}
+                transactionCode={transactionType?.code}
                 adminEdit={adminEdit}
               />
 
