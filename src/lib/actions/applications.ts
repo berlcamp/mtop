@@ -12,6 +12,11 @@ import {
   findCoOwnerMarker,
   SINGLE_OPERATOR_MESSAGE,
 } from "@/lib/operator-name"
+import {
+  normalizeUnitIdentifier,
+  unitConflictMessage,
+  type UnitIdentifierConflict,
+} from "@/lib/unit-identifier"
 import { reopenTargetStage } from "@/lib/application-flow"
 import { composeAddress } from "@/lib/address"
 import type {
@@ -86,6 +91,56 @@ async function findOperatorsActiveFranchise(
   }[]
 
   return hit[0] ?? null
+}
+
+/**
+ * The active franchise already carrying this body or plate number, if any.
+ *
+ * Both numbers are unique across active franchises, enforced by two partial
+ * unique indexes in the database (20260413000021); this lookup exists so the
+ * app can say *which* franchise holds the number instead of surfacing a
+ * duplicate-key error. `excludeFranchiseId` skips the franchise being edited,
+ * so a transaction is never blocked by the record it is itself changing.
+ *
+ * Reports one row per clashing field, so a form can put each message under the
+ * input it belongs to.
+ */
+async function findUnitIdentifierConflicts(
+  supabase: Supabase,
+  numbers: { bodyNumber?: string | null; plateNumber?: string | null },
+  excludeFranchiseId?: string
+): Promise<UnitIdentifierConflict[]> {
+  const body = numbers.bodyNumber ?? ""
+  const plate = numbers.plateNumber ?? ""
+  if (!normalizeUnitIdentifier(body) && !normalizeUnitIdentifier(plate))
+    return []
+
+  const { data } = await supabase
+    .schema("mtop")
+    .rpc("find_unit_identifier_conflict", {
+      p_body_number: body || null,
+      p_plate_number: plate || null,
+      p_exclude_franchise_id: excludeFranchiseId ?? null,
+    })
+
+  return (data ?? []) as UnitIdentifierConflict[]
+}
+
+/**
+ * The one conflict to report when a filing is refused. Body number comes first
+ * when both clash, since that is the field the clerk fills first.
+ */
+async function findUnitIdentifierConflict(
+  supabase: Supabase,
+  numbers: { bodyNumber?: string | null; plateNumber?: string | null },
+  excludeFranchiseId?: string
+): Promise<UnitIdentifierConflict | null> {
+  const hits = await findUnitIdentifierConflicts(
+    supabase,
+    numbers,
+    excludeFranchiseId
+  )
+  return hits.find((h) => h.field === "tricycle_body_number") ?? hits[0] ?? null
 }
 
 /**
@@ -188,6 +243,16 @@ export async function createNewFranchiseApplication(
         }. Use the renewal flow instead.`,
         data: null,
       }
+    }
+
+    // Body and plate number each identify one tricycle citywide. The database
+    // enforces this too; checking here names the franchise in the way.
+    const unitConflict = await findUnitIdentifierConflict(supabase, {
+      bodyNumber: input.tricycle_body_number,
+      plateNumber: input.plate_number,
+    })
+    if (unitConflict) {
+      return { error: unitConflictMessage(unitConflict), data: null }
     }
 
     const { data: franchise, error: franchiseError } = await supabase
@@ -365,6 +430,31 @@ export async function createFranchiseTransaction(
     const isChangeUnit = input.transaction_type_code === "change_unit"
     const isChangeOwnership = input.transaction_type_code === "change_ownership"
 
+    // Body and plate number each identify one tricycle citywide, so whichever
+    // of them this transaction touches has to be free. On a change of unit the
+    // plate under test is the staged one — the current plate belongs to the
+    // unit being replaced and is checked against this franchise's own record,
+    // which is excluded below.
+    const unitConflict = await findUnitIdentifierConflict(
+      supabase,
+      {
+        bodyNumber: input.tricycle_body_number,
+        plateNumber: isChangeUnit ? input.new_plate_number : input.plate_number,
+      },
+      franchise.id
+    )
+    if (unitConflict) {
+      return {
+        error: unitConflictMessage(
+          unitConflict,
+          isChangeUnit && unitConflict.field === "plate_number"
+            ? "New plate number"
+            : undefined
+        ),
+        data: null,
+      }
+    }
+
     const franchiseUpdates: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
     }
@@ -485,6 +575,34 @@ export async function checkOperatorAvailability(
       coOwnerMarker: null,
       heldFranchise: null,
     }
+  }
+}
+
+/**
+ * Pre-flight for the body- and plate-number fields, so a number that is
+ * already on another franchise is caught while the clerk is still on the
+ * tricycle section rather than on submit. Either field may be omitted, which
+ * is how a form asks about the one that just changed.
+ *
+ * The authoritative checks still run in the create actions and in the
+ * database — this is only allowed to be faster, never to be the last word.
+ */
+export async function checkUnitIdentifiers(
+  numbers: { bodyNumber?: string; plateNumber?: string },
+  excludeFranchiseId?: string
+): Promise<{ error: string | null; conflicts: UnitIdentifierConflict[] }> {
+  try {
+    const { supabase } = await getAuthUser()
+
+    const conflicts = await findUnitIdentifierConflicts(
+      supabase,
+      { bodyNumber: numbers.bodyNumber, plateNumber: numbers.plateNumber },
+      excludeFranchiseId
+    )
+
+    return { error: null, conflicts }
+  } catch (e) {
+    return { error: (e as Error).message, conflicts: [] }
   }
 }
 

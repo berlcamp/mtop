@@ -22,6 +22,7 @@ import {
   existingFranchiseTransactionCodes,
 } from "@/lib/schemas/mtop"
 import { createFranchiseTransaction } from "@/lib/actions/applications"
+import { useUnitIdentifierCheck } from "@/lib/hooks/use-unit-identifier-check"
 import type { TransactionType } from "@/types/database"
 import type { FranchiseSearchHit } from "./franchise-lookup"
 import { RequirementsPreview } from "./requirements-preview"
@@ -46,6 +47,19 @@ export function FranchiseTransactionForm({
   const isChangeUnit = transactionType.code === "change_unit"
   const isChangeOwnership = transactionType.code === "change_ownership"
 
+  // Body and plate number are unique across active franchises. Tracked off
+  // register()'s own onChange rather than watch(), which React Compiler
+  // refuses to memoize around. This franchise is excluded from the lookup, so
+  // leaving its own numbers alone never flags them.
+  const [bodyNumber, setBodyNumber] = useState(
+    franchise.tricycle_body_number ?? ""
+  )
+  // On a change of unit the plate under test is the staged one — the current
+  // plate belongs to the unit being replaced and is not editable here.
+  const [plateNumber, setPlateNumber] = useState(
+    isChangeUnit ? "" : franchise.plate_number ?? ""
+  )
+
   const {
     register,
     handleSubmit,
@@ -66,6 +80,18 @@ export function FranchiseTransactionForm({
       association_id: franchise.association_id ?? "",
       due_date: "",
     },
+  })
+
+  const bodyNumberField = register("tricycle_body_number")
+  const plateNumberField = register(
+    isChangeUnit ? "new_plate_number" : "plate_number"
+  )
+
+  const unitConflicts = useUnitIdentifierCheck({
+    bodyNumber,
+    plateNumber,
+    excludeFranchiseId: franchise.id,
+    plateLabel: isChangeUnit ? "New plate number" : undefined,
   })
 
   async function onSubmit(data: FranchiseTransactionFormValues) {
@@ -201,7 +227,20 @@ export function FranchiseTransactionForm({
                 {!isChangeUnit && (
                   <div className="space-y-2">
                     <Label htmlFor="plate_number">Plate Number</Label>
-                    <Input id="plate_number" {...register("plate_number")} />
+                    <Input
+                      id="plate_number"
+                      {...plateNumberField}
+                      onChange={(e) => {
+                        plateNumberField.onChange(e)
+                        setPlateNumber(e.target.value)
+                      }}
+                      aria-invalid={!!unitConflicts.plate_number}
+                    />
+                    {unitConflicts.plate_number && (
+                      <p className="text-xs text-destructive">
+                        {unitConflicts.plate_number}
+                      </p>
+                    )}
                   </div>
                 )}
 
@@ -209,8 +248,18 @@ export function FranchiseTransactionForm({
                   <Label htmlFor="tricycle_body_number">Body Number</Label>
                   <Input
                     id="tricycle_body_number"
-                    {...register("tricycle_body_number")}
+                    {...bodyNumberField}
+                    onChange={(e) => {
+                      bodyNumberField.onChange(e)
+                      setBodyNumber(e.target.value)
+                    }}
+                    aria-invalid={!!unitConflicts.tricycle_body_number}
                   />
+                  {unitConflicts.tricycle_body_number && (
+                    <p className="text-xs text-destructive">
+                      {unitConflicts.tricycle_body_number}
+                    </p>
+                  )}
                 </div>
 
                 <div className="space-y-2">
@@ -307,8 +356,18 @@ export function FranchiseTransactionForm({
                     <Input
                       id="new_plate_number"
                       placeholder="Leave blank to keep the current plate"
-                      {...register("new_plate_number")}
+                      {...plateNumberField}
+                      onChange={(e) => {
+                        plateNumberField.onChange(e)
+                        setPlateNumber(e.target.value)
+                      }}
+                      aria-invalid={!!unitConflicts.plate_number}
                     />
+                    {unitConflicts.plate_number && (
+                      <p className="text-xs text-destructive">
+                        {unitConflicts.plate_number}
+                      </p>
+                    )}
                   </div>
                 </div>
               </CardContent>

@@ -23,6 +23,7 @@ import {
   createNewFranchiseApplication,
   checkOperatorAvailability,
 } from "@/lib/actions/applications"
+import { useUnitIdentifierCheck } from "@/lib/hooks/use-unit-identifier-check"
 import { AssociationSelect } from "@/components/mtop/association-select"
 import { BarangaySelect } from "@/components/mtop/barangay-select";
 import type { TransactionType } from "@/types/database";
@@ -46,6 +47,12 @@ export function NewFranchiseForm({
   // Tracked off register()'s own onChange rather than react-hook-form's
   // watch(), which React Compiler refuses to memoize around.
   const [operatorName, setOperatorName] = useState("")
+
+  // Same story for the two numbers that identify the tricycle citywide: a body
+  // or plate number already on another active franchise is refused by the
+  // database, so say so here rather than on submit.
+  const [bodyNumber, setBodyNumber] = useState("")
+  const [plateNumber, setPlateNumber] = useState("")
 
   const {
     register,
@@ -71,6 +78,10 @@ export function NewFranchiseForm({
   });
 
   const applicantNameField = register("applicant_name")
+  const bodyNumberField = register("tricycle_body_number")
+  const plateNumberField = register("plate_number")
+
+  const unitConflicts = useUnitIdentifierCheck({ bodyNumber, plateNumber })
 
   useEffect(() => {
     const name = operatorName?.trim() ?? ""
@@ -221,14 +232,25 @@ export function NewFranchiseForm({
                   <Input
                     id="tricycle_body_number"
                     placeholder="e.g., 1234"
-                    {...register("tricycle_body_number")}
-                    aria-invalid={!!errors.tricycle_body_number}
+                    {...bodyNumberField}
+                    onChange={(e) => {
+                      bodyNumberField.onChange(e)
+                      setBodyNumber(e.target.value)
+                    }}
+                    aria-invalid={
+                      !!errors.tricycle_body_number ||
+                      !!unitConflicts.tricycle_body_number
+                    }
                   />
-                  {errors.tricycle_body_number && (
+                  {errors.tricycle_body_number ? (
                     <p className="text-xs text-destructive">
                       {errors.tricycle_body_number.message}
                     </p>
-                  )}
+                  ) : unitConflicts.tricycle_body_number ? (
+                    <p className="text-xs text-destructive">
+                      {unitConflicts.tricycle_body_number}
+                    </p>
+                  ) : null}
                 </div>
 
                 <div className="space-y-2">
@@ -236,14 +258,24 @@ export function NewFranchiseForm({
                   <Input
                     id="plate_number"
                     placeholder="e.g., AB-1234"
-                    {...register("plate_number")}
-                    aria-invalid={!!errors.plate_number}
+                    {...plateNumberField}
+                    onChange={(e) => {
+                      plateNumberField.onChange(e)
+                      setPlateNumber(e.target.value)
+                    }}
+                    aria-invalid={
+                      !!errors.plate_number || !!unitConflicts.plate_number
+                    }
                   />
-                  {errors.plate_number && (
+                  {errors.plate_number ? (
                     <p className="text-xs text-destructive">
                       {errors.plate_number.message}
                     </p>
-                  )}
+                  ) : unitConflicts.plate_number ? (
+                    <p className="text-xs text-destructive">
+                      {unitConflicts.plate_number}
+                    </p>
+                  ) : null}
                 </div>
 
                 <div className="space-y-2">

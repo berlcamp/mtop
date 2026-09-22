@@ -121,6 +121,16 @@ Name matching is normalised for case, spacing and punctuation but is **not fuzzy
 
 `src/lib/operator-name.ts` mirrors both SQL helpers so forms can warn early and the actions can return a readable sentence — but all real matching goes through `mtop.find_operator_active_franchise()` (an RPC that hits the unique index), so the TS copy can't drift from the constraint. `grant_franchise()` re-checks on `transfer_owner`, since a successor could acquire their own franchise between filing and grant.
 
+### Unit Identity Rules
+
+The body number and the plate number each identify one tricycle citywide, so **no two active franchises may share either** (`20260413000021_unique_unit_identifiers.sql`). Two partial unique indexes over `mtop.normalize_unit_identifier(...)` `WHERE franchise_status = 'active'` enforce it; a blank or missing number is excluded from the index, and leaving `active` releases the number for reassignment.
+
+Matching upper-cases and drops spacing and punctuation — `AB 1234`, `ab-1234` and `AB1234` are one plate — but is not fuzzy beyond that. `src/lib/unit-identifier.ts` mirrors the SQL helper, and `mtop.find_unit_identifier_conflict()` is the RPC that names the franchise already holding the number, so a clerk gets a sentence instead of a duplicate-key error. `useUnitIdentifierCheck()` (`src/lib/hooks/use-unit-identifier-check.ts`) runs the same lookup under both forms' body/plate fields while the clerk types.
+
+Motor + chassis is still a separate, weaker check: `createNewFranchiseApplication` refuses a pair that already exists, but there is no index behind it.
+
+A change of unit stages `new_plate_number` and applies it on grant, so the plate is checked twice — at filing by `createFranchiseTransaction`, and again in `grant_franchise()`'s `replace_unit` branch, since another franchise can take the plate in between. Running the migration over data that already has duplicates fails on purpose and names them; `supabase/scripts/report-duplicate-unit-identifiers.sql` lists them in full. There is no automatic fixer — unlike duplicate operators, only someone with the paper file knows which of the two records is wrong.
+
 ### Audit Trail
 
 Every change to a franchise is logged by a database trigger, not by the server actions — `mtop.log_audit_change()` on `mtop.mtop_franchises` (`20260413000019_audit_trail.sql`). A write path that forgets to log leaves a hole nobody can see from the application side, so the capture point is the table itself: granting a transaction, the photo/driver editor, a fix typed into Studio and a script all land in `mtop.audit_logs` alike.
