@@ -73,7 +73,7 @@ Creation flow (`src/lib/actions/applications.ts`):
 |---|---|---|
 | `issue_number` | New Franchise | Assigns the next MTOP number via `mtop.next_mtop_number(year)` (year-prefixed, `2026-0001`) and sets `granted_until` |
 | `extend_validity` | Renewal | Advances `granted_until` to `granted_at + validity_years`, keeps the number |
-| `replace_unit` | Change of Unit | Copies `new_motor_number`/`new_chassis_number`/`new_plate_number` from the application onto the franchise; logs the old values to `mtop.franchise_unit_history` |
+| `replace_unit` | Change of Unit | Copies `new_motor_number`/`new_chassis_number`/`new_plate_number` from the application onto the franchise; logs the old values to `mtop.franchise_unit_history`. `granted_until` is untouched — replacing a unit never extends the renewal due date |
 | `transfer_owner` | Change of Ownership | Copies `new_applicant_name`/`new_applicant_address`/`new_contact_number` from the application onto the franchise; logs the old values to `mtop.franchise_ownership_history` |
 | `confirm_year` | Annual Confirmation Slip | Sets `last_confirmed_at`; no change to number or validity |
 | `reprint_permit` | Re-Issuance | Sets `last_reissued_at`; no change to number or validity |

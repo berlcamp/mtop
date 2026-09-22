@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Loader2, AlertCircle, ArrowLeft } from "lucide-react"
+import { format } from "date-fns"
 import {
   franchiseTransactionSchema,
   type FranchiseTransactionFormValues,
@@ -244,7 +245,11 @@ export function FranchiseTransactionForm({
                 <CardTitle className="text-lg">New Unit Details</CardTitle>
                 <CardDescription>
                   Takes effect only once this transaction is granted — the
-                  current unit stays on record until then.
+                  current unit stays on record until then. Replacing the unit
+                  does not extend the franchise:{" "}
+                  {franchise.granted_until
+                    ? `the renewal due date stays ${format(new Date(franchise.granted_until), "MMM d, yyyy")}.`
+                    : "the renewal due date is unchanged."}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-5">
