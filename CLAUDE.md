@@ -111,6 +111,18 @@ Name matching is normalised for case, spacing and punctuation but is **not fuzzy
 
 `src/lib/operator-name.ts` mirrors both SQL helpers so forms can warn early and the actions can return a readable sentence — but all real matching goes through `mtop.find_operator_active_franchise()` (an RPC that hits the unique index), so the TS copy can't drift from the constraint. `grant_franchise()` re-checks on `transfer_owner`, since a successor could acquire their own franchise between filing and grant.
 
+### Audit Trail
+
+Every change to a franchise is logged by a database trigger, not by the server actions — `mtop.log_audit_change()` on `mtop.mtop_franchises` (`20260413000019_audit_trail.sql`). A write path that forgets to log leaves a hole nobody can see from the application side, so the capture point is the table itself: granting a transaction, the photo/driver editor, a fix typed into Studio and a script all land in `mtop.audit_logs` alike.
+
+- `mtop.audit_logs` — `table_name`, `record_id`, `franchise_id`, `action` (`insert`/`update`/`delete`), `actor_id` (`auth.uid()`, null for service-role writes), and `changes` as `{ column: { old, new } }` holding **only** the columns that actually moved. Append-only: RLS grants `SELECT` and nothing else, and the trigger is `SECURITY DEFINER` so it writes past that.
+- The trigger takes the franchise-key column and an ignore list as arguments (`'id'`, `'id,created_at,updated_at,created_by'`), so auditing a second table is a `CREATE TRIGGER` and nothing else.
+- It does **not** replace `approval_logs`, `franchise_unit_history` or `franchise_ownership_history`. Those tie a change to the application that authorised it, which a trigger can't know; the audit log is the catch-all underneath.
+
+`getFranchiseHistory()` (`src/lib/actions/audit.ts`) merges all five sources into one chronological `FranchiseHistoryEvent[]`. Column names and raw values are turned into readable lines by `src/lib/audit.ts`, which also tags each column as `operator` / `driver` / `unit` / `franchise` — that grouping is what the timeline's filters use, since the ordinance treats the operator and the driver as separate people with separate histories. Franchises created before the trigger existed have no `insert` row, so the registration event is synthesised from `created_at`/`created_by`; there is no backfill, because inventing rows from today's values would put wrong data in an audit table.
+
+It renders via `HistoryTimeline` (`src/components/shared/history-timeline.tsx`) in two places: the full trail under the History tab of `/dashboard/franchises/[id]`, and the last six entries on the application detail page.
+
 ### Associations
 
 Most motorcabs belong to an operators' association (MODA); strikers operate without one, so `association_id` is nullable and "No association" is the picker's default first option. `mtop.associations` holds the registry (name, president, contact number, `is_active`), seeded from the AOMODA directory with 70 entries, and `mtop_franchises.association_id` links each franchise to one.
@@ -144,6 +156,8 @@ npx supabase gen types typescript --project-id <id> > src/types/database.ts
 All authenticated routes live under `/dashboard`. The dashboard layout (`src/app/dashboard/layout.tsx`) is a **Client Component** that wraps children in `ProfileProvider` + `SidebarProvider`.
 
 Page files (`page.tsx`) are Server Components; heavy client logic is split into `*-content.tsx` Client Components alongside them.
+
+`/dashboard/franchises/[id]` is the franchise (operator) record — identity, current unit and driver, every transaction filed against it, and the full audit trail. It is reached from the "Franchise record" button on an application, not from the sidebar; there is no franchise list page.
 
 ### Environment Variables
 

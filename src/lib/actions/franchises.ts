@@ -150,3 +150,55 @@ export async function updateFranchiseDriverDetails(
     return { error: (e as Error).message }
   }
 }
+
+/**
+ * One franchise with everything the franchise record page shows: the
+ * association it belongs to, who registered it, and every transaction ever
+ * filed against it, newest first.
+ *
+ * The franchise — not the application — is the operator's permanent record,
+ * so this is the query behind /dashboard/franchises/[id]. Its audit trail is
+ * fetched separately by getFranchiseHistory() in @/lib/actions/audit.
+ */
+export async function getFranchise(id: string) {
+  try {
+    const { supabase } = await getAuthUser()
+
+    const [franchiseResult, applicationsResult] = await Promise.all([
+      supabase
+        .schema("mtop")
+        .from("mtop_franchises")
+        .select(
+          "*, association:associations(id, name), creator:user_profiles!created_by(id, full_name)"
+        )
+        .eq("id", id)
+        .maybeSingle(),
+      supabase
+        .schema("mtop")
+        .from("mtop_applications")
+        .select("*, transaction_type:transaction_types(id, code, name)")
+        .eq("franchise_id", id)
+        .order("submitted_at", { ascending: false }),
+    ])
+
+    if (franchiseResult.error) {
+      return { error: franchiseResult.error.message, data: null }
+    }
+    if (!franchiseResult.data) {
+      return { error: "Franchise not found.", data: null }
+    }
+    if (applicationsResult.error) {
+      return { error: applicationsResult.error.message, data: null }
+    }
+
+    return {
+      error: null,
+      data: {
+        franchise: franchiseResult.data,
+        applications: applicationsResult.data ?? [],
+      },
+    }
+  } catch (e) {
+    return { error: (e as Error).message, data: null }
+  }
+}

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 import { PageHeader } from "@/components/layout/page-header"
 import {
   Card,
@@ -11,11 +12,12 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { StatusBadge } from "@/components/shared/status-badge"
 import { ApprovalStepper } from "@/components/shared/approval-stepper"
 import { TimelineLog } from "@/components/shared/timeline-log"
+import { HistoryTimeline } from "@/components/shared/history-timeline"
 import { RequirementChecklist } from "@/components/mtop/requirement-checklist"
 import { FranchisePhotosCard } from "@/components/mtop/franchise-photos-card"
 import { InspectionChecklist } from "@/components/mtop/inspection-checklist"
@@ -36,6 +38,7 @@ import {
   Printer,
   ArrowRight,
   Building2,
+  History,
 } from "lucide-react"
 import { format } from "date-fns"
 import { updateApplicationStatus } from "@/lib/actions/applications"
@@ -45,10 +48,19 @@ import { getExpirationStatus } from "@/lib/utils/permit-expiration"
 import { isBlocking } from "@/lib/requirements"
 import { ExpirationBadge } from "@/components/shared/expiration-badge"
 import type { MtopStatus } from "@/types/database"
+import type { FranchiseHistoryEvent } from "@/lib/audit"
 import type { SystemSettings } from "@/lib/actions/settings"
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function ApplicationDetail({ application, settings }: { application: any; settings: SystemSettings }) {
+export function ApplicationDetail({
+  application,
+  settings,
+  franchiseHistory,
+}: {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  application: any
+  settings: SystemSettings
+  franchiseHistory: FranchiseHistoryEvent[]
+}) {
   const router = useRouter()
   const { can } = usePermissions()
   const [error, setError] = useState<string | null>(null)
@@ -119,6 +131,15 @@ export function ApplicationDetail({ application, settings }: { application: any;
         subtitle={`${transactionType?.name ?? "Application"} · ${franchise?.applicant_name ?? ""} — ${franchise?.route ?? "No route"}`}
         actions={
           <div className="flex items-center gap-2">
+            {franchise?.id && (
+              <Link
+                href={`/dashboard/franchises/${franchise.id}`}
+                className={buttonVariants({ variant: "outline", size: "sm" })}
+              >
+                <History className="h-4 w-4" />
+                Franchise record
+              </Link>
+            )}
             {application.status === "granted" && (
               <Button
                 variant="outline"
@@ -499,6 +520,34 @@ export function ApplicationDetail({ application, settings }: { application: any;
             </CardHeader>
             <CardContent>
               <TimelineLog logs={application.approval_logs ?? []} />
+            </CardContent>
+          </Card>
+
+          {/* Recent changes to the franchise itself — a different question
+              from "what happened to this application", which is why it sits
+              beside the activity log rather than inside it. */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Franchise history</CardTitle>
+              <CardDescription>
+                Recent changes to the operator, driver and unit on record.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <HistoryTimeline
+                events={franchiseHistory}
+                showFilters={false}
+                emptyMessage="Nothing recorded for this franchise yet."
+              />
+              {franchise?.id && (
+                <Link
+                  href={`/dashboard/franchises/${franchise.id}`}
+                  className="inline-flex items-center gap-1 text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                >
+                  View the full audit trail
+                  <ArrowRight className="h-3 w-3" />
+                </Link>
+              )}
             </CardContent>
           </Card>
         </div>

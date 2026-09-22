@@ -305,6 +305,26 @@ export interface ApprovalLog {
   created_at: string
 }
 
+export type AuditAction = "insert" | "update" | "delete"
+
+/**
+ * One row of mtop.audit_logs. Written only by the mtop.log_audit_change()
+ * trigger (20260413000019_audit_trail.sql) — the table is append-only and has
+ * no insert policy, so nothing in the app writes here.
+ */
+export interface AuditLog {
+  id: string
+  table_name: string
+  record_id: string
+  franchise_id: string | null
+  action: AuditAction
+  /** auth.uid() at the time of the write; null for service-role/SQL writes. */
+  actor_id: string | null
+  /** { column: { old, new } } — only the columns that actually changed. */
+  changes: Record<string, { old: unknown; new: unknown }>
+  created_at: string
+}
+
 export interface MtopNegativeList {
   id: string
   applicant_name: string
@@ -522,6 +542,13 @@ export interface MtopSchema {
       Row: ApprovalLog
       Insert: Omit<ApprovalLog, "id" | "created_at"> & { id?: string; created_at?: string }
       Update: Partial<Omit<ApprovalLog, "id">>
+    }
+    // Append-only: rows come from a trigger, so there is no Insert or Update
+    // shape the application is ever allowed to use.
+    audit_logs: {
+      Row: AuditLog
+      Insert: never
+      Update: never
     }
     mtop_negative_list: {
       Row: MtopNegativeList

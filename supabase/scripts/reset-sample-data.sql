@@ -25,6 +25,12 @@ BEGIN;
 -- has a foreign key back to mtop_franchises or mtop_applications.
 TRUNCATE TABLE mtop.mtop_franchises CASCADE;
 
+-- The audit trail is deliberately NOT tied to mtop_franchises by a foreign
+-- key — an audit row has to outlive the record it describes — so the CASCADE
+-- above leaves it behind. Clear it here instead, or the reset ships you a log
+-- full of changes to franchises that no longer exist.
+TRUNCATE TABLE mtop.audit_logs;
+
 -- Restarts MTOP numbering from 1 for every year, so the next grant issues
 -- AO-<year>-00001 again instead of continuing where the sample data left off.
 -- Comment this line out if you'd rather keep counting up.
