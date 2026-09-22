@@ -11,8 +11,9 @@ export const franchiseSchema = z.object({
   motor_number: z.string().min(1, "Motor number is required"),
   chassis_number: z.string().min(1, "Chassis number is required"),
   route: z.string().min(1, "Route is required"),
-  // Every motorcab belongs to an operators' association (MODA).
-  association_id: z.string().uuid("Select an association"),
+  // Optional: strikers operate without belonging to any association, so an
+  // empty value is valid and is the default.
+  association_id: z.string().uuid().optional().or(z.literal("")),
   // Printed on the Franchise Card; optional so existing franchises stay valid.
   make: z.string().trim().max(60).optional(),
   day_off: z.string().trim().max(60).optional(),

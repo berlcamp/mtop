@@ -102,11 +102,11 @@ To add or reword a checklist item, `INSERT`/`UPDATE` these tables. Do not add Ty
 
 ### Associations
 
-Every motorcab belongs to an operators' association (MODA). `mtop.associations` holds the registry (name, president, contact number, `is_active`), seeded from the AOMODA directory with 70 entries, and `mtop_franchises.association_id` links each franchise to one.
+Most motorcabs belong to an operators' association (MODA); strikers operate without one, so `association_id` is nullable and "No association" is the picker's default first option. `mtop.associations` holds the registry (name, president, contact number, `is_active`), seeded from the AOMODA directory with 70 entries, and `mtop_franchises.association_id` links each franchise to one.
 
 It is reference data, editable at `/dashboard/admin/associations` (gated on `admin.manage`) via `src/lib/actions/associations.ts` — presidents and contact numbers change every election cycle. Deactivating hides an association from new applications but keeps it on the franchises already using it; deleting is refused while any franchise references it.
 
-`AssociationSelect` (`src/components/mtop/association-select.tsx`) is the picker used by both franchise forms. It is a native `<select>` so it registers directly with react-hook-form and gets keyboard type-ahead for the ~70 options; it lists only active associations, plus the franchise's own current one if that has since been deactivated.
+`AssociationSelect` (`src/components/mtop/association-select.tsx`) is the picker used by both franchise forms. It is a native `<select>` so it registers directly with react-hook-form and gets keyboard type-ahead for the ~70 options; it lists "No association (striker)" first, then only active associations, plus the franchise's own current one if that has since been deactivated.
 
 ### Types
 

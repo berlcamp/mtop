@@ -139,7 +139,7 @@ export async function createNewFranchiseApplication(
         motor_number: input.motor_number,
         chassis_number: input.chassis_number,
         route: input.route,
-        association_id: input.association_id,
+        association_id: input.association_id || null,
         make: input.make?.trim() || null,
         day_off: input.day_off?.trim() || null,
         created_by: user.id,
@@ -287,10 +287,10 @@ export async function createFranchiseTransaction(
       franchiseUpdates.make = input.make?.trim() || null
     if (input.day_off !== undefined)
       franchiseUpdates.day_off = input.day_off?.trim() || null
-    // Empty string means "left blank", not "clear it" — the picker submits ""
-    // when nothing is chosen.
-    if (input.association_id)
-      franchiseUpdates.association_id = input.association_id
+    // "" is the picker's "No association (striker)" option, so it clears the
+    // franchise's association rather than being ignored as a blank.
+    if (input.association_id !== undefined)
+      franchiseUpdates.association_id = input.association_id || null
 
     const { error: updateError } = await supabase
       .schema("mtop")

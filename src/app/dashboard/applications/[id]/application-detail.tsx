@@ -332,7 +332,9 @@ export function ApplicationDetail({ application, settings }: { application: any;
                 />
                 <InfoItem
                   label="Association"
-                  value={franchise?.association?.name}
+                  // No association is a real state (strikers), not missing
+                  // data, so say so rather than showing a bare dash.
+                  value={franchise?.association?.name ?? "No association (striker)"}
                   icon={<Building2 className="h-3.5 w-3.5" />}
                 />
                 <InfoItem

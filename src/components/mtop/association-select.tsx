@@ -8,6 +8,10 @@ import type { Association } from "@/types/database"
 /**
  * Association picker for the franchise forms.
  *
+ * The empty value is a real choice, not a placeholder — strikers operate
+ * without belonging to any association — so it reads "No association" and is
+ * what the field defaults to.
+ *
  * A native <select> rather than a styled listbox: there are ~70 associations,
  * and a native control gives keyboard type-ahead, mobile's own picker, and
  * clean react-hook-form registration for free. `register("association_id")`
@@ -59,7 +63,9 @@ export function AssociationSelect({
         {...props}
       >
         <option value="">
-          {associations === null ? "Loading associations…" : "Select an association…"}
+          {associations === null
+            ? "Loading associations…"
+            : "No association (striker)"}
         </option>
         {needsCurrent && (
           <option value={currentAssociation.id}>

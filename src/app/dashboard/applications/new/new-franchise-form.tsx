@@ -236,7 +236,7 @@ export function NewFranchiseForm({
                 </div>
 
                 <div className="space-y-2 sm:col-span-2">
-                  <Label htmlFor="association_id">Association</Label>
+                  <Label htmlFor="association_id">Association (optional)</Label>
                   <AssociationSelect
                     id="association_id"
                     invalid={!!errors.association_id}
