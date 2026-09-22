@@ -55,6 +55,12 @@ Side exits: `rejected` (terminal) and `returned`.
 
 A return pauses an application without unwinding any of its work — cleared requirements, inspection result, assessment and payments all stay. `reopenApplication()` puts it back at the stage it was returned from, derived server-side by `reopenTargetStage()` (`src/lib/application-flow.ts`) from the newest `approval_logs` row naming a pipeline stage; the client never names the target stage, it only labels the button. Reopening is logged as a `forwarded` entry, since `approval_logs.action` has no `reopened` value. A returned application still counts as the franchise's one in-flight application, so reopening can't collide with `idx_applications_one_in_flight_per_franchise`. The button is gated on the permission for the stage being resumed (`stagePermission()`), which is the same permission that allowed the return in the first place.
 
+Reopening only moves the status; what makes it useful is that the stage it lands on is editable again. Two of the stage components used to lock permanently once a record existed, which left a reopened application with nowhere to fix what it was returned for:
+
+- **Inspection** — an inspection on file renders as a result, not a form. `InspectionChecklist` now offers **Re-inspect** at `for_inspection`, prefilled from the last visit so the inspector ticks off only what has since been put right. `createInspection()` writes a new row and reads take the newest, so the failed visit stays on record.
+- **Assessment** — same shape. **Revise Assessment** is offered while the assessment is still unapproved; once the CTO head has approved it, the figure is what the operator was told to pay and is no longer a form to edit.
+- **Requirements** — editable to anyone with `application.verify` at any stage before `granted`/`rejected`, not only at `for_verification`. A missing document is often raised later, by an inspector or assessor, and the counter has to be able to attach it when the operator brings it in. Same rule as the franchise photos card.
+
 Every status change inserts a row into `mtop.approval_logs`.
 
 ### Franchise vs Application

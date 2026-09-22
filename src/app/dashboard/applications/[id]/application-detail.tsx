@@ -427,14 +427,21 @@ export function ApplicationDetail({
             </CardContent>
           </Card>
 
-          {/* Requirement checklist for this transaction */}
+          {/* Requirement checklist for this transaction.
+              Editable at any stage before the permit is settled, not only at
+              for_verification: a deficiency is often raised later — an
+              inspector or assessor returns the application over a missing
+              document — and the counter has to be able to attach it when the
+              operator brings it in, whether that is before or after the
+              application is reopened. Same rule as the photos card above. */}
           <RequirementChecklist
             requirements={requirements}
             applicationId={application.id}
             transactionName={transactionType?.name}
             canVerify={
               can("application.verify") &&
-              application.status === "for_verification"
+              application.status !== "granted" &&
+              application.status !== "rejected"
             }
           />
 

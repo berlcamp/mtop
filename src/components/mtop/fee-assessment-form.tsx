@@ -48,19 +48,29 @@ export function FeeAssessmentForm({
   canApproveAssessment,
   status,
 }: FeeAssessmentFormProps) {
-  // If assessment exists, show read-only view
-  if (existingAssessment) {
+  const [reassessing, setReassessing] = useState(false)
+
+  const canRecord = status === "for_assessment" && canAssess
+  // Fees can be re-stated while the assessment is still unapproved — an
+  // application returned over a wrong amount is reopened at this stage and
+  // would otherwise have nowhere to correct it. Once the CTO head has
+  // approved, the figure is what the operator was told to pay, so revising it
+  // is not a matter of editing a form.
+  const canRevise = canRecord && !existingAssessment?.approved_at
+
+  if (existingAssessment && !reassessing) {
     return (
       <AssessmentResult
         assessment={existingAssessment}
         applicationId={applicationId}
         canApprove={canApproveAssessment}
         status={status}
+        onRevise={canRevise ? () => setReassessing(true) : undefined}
       />
     )
   }
 
-  if (status !== "for_assessment" || !canAssess) {
+  if (!canRecord) {
     return null
   }
 
@@ -68,6 +78,11 @@ export function FeeAssessmentForm({
     <AssessmentFormInner
       applicationId={applicationId}
       dueDate={dueDate}
+      // A revision starts from the figures already assessed, so only the line
+      // that was wrong has to be retyped.
+      previous={existingAssessment}
+      onCancel={existingAssessment ? () => setReassessing(false) : undefined}
+      onSaved={() => setReassessing(false)}
     />
   )
 }
@@ -75,27 +90,45 @@ export function FeeAssessmentForm({
 function AssessmentFormInner({
   applicationId,
   dueDate,
+  previous,
+  onCancel,
+  onSaved,
 }: {
   applicationId: string
   dueDate: string | null
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  previous?: any | null
+  onCancel?: () => void
+  onSaved?: () => void
 }) {
   const router = useRouter()
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Standard fees — editable
-  const [fees, setFees] = useState<Record<string, number>>({
-    ...STANDARD_FEES,
-    late_renewal_penalty: dueDate
-      ? calculateLatePenalty(new Date(dueDate), new Date())
-      : 0,
-    change_of_motor_fee: 0,
-    replacement_plate_fee: 0,
+  // Standard fees — editable. A revision starts from what was assessed before;
+  // a first assessment from the standard schedule.
+  const [fees, setFees] = useState<Record<string, number>>(() => {
+    const base: Record<string, number> = {
+      ...STANDARD_FEES,
+      late_renewal_penalty: dueDate
+        ? calculateLatePenalty(new Date(dueDate), new Date())
+        : 0,
+      change_of_motor_fee: 0,
+      replacement_plate_fee: 0,
+    }
+    if (!previous) return base
+    return Object.fromEntries(
+      Object.keys(base).map((key) => [key, Number(previous[key] ?? base[key])])
+    )
   })
 
   // Optional fee toggles
-  const [changeOfMotor, setChangeOfMotor] = useState(false)
-  const [replacementPlate, setReplacementPlate] = useState(false)
+  const [changeOfMotor, setChangeOfMotor] = useState(
+    Number(previous?.change_of_motor_fee ?? 0) > 0
+  )
+  const [replacementPlate, setReplacementPlate] = useState(
+    Number(previous?.replacement_plate_fee ?? 0) > 0
+  )
 
   function updateFee(key: string, value: string) {
     const num = parseFloat(value) || 0
@@ -150,6 +183,7 @@ function AssessmentFormInner({
 
     router.refresh()
     setSubmitting(false)
+    onSaved?.()
   }
 
   const standardFeeKeys = Object.keys(STANDARD_FEES)
@@ -305,10 +339,17 @@ function AssessmentFormInner({
           </span>
         </div>
 
-        <Button onClick={handleSubmit} disabled={submitting}>
-          {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          Submit Assessment
-        </Button>
+        <div className="flex gap-2">
+          <Button onClick={handleSubmit} disabled={submitting}>
+            {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {previous ? "Submit Revised Assessment" : "Submit Assessment"}
+          </Button>
+          {onCancel && (
+            <Button variant="outline" onClick={onCancel} disabled={submitting}>
+              Cancel
+            </Button>
+          )}
+        </div>
       </CardContent>
     </Card>
   )
@@ -319,12 +360,15 @@ function AssessmentResult({
   applicationId,
   canApprove,
   status,
+  onRevise,
 }: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   assessment: any
   applicationId: string
   canApprove: boolean
   status: MtopStatus
+  /** Set only while the assessment is unapproved and this stage is open. */
+  onRevise?: () => void
 }) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
@@ -409,15 +453,23 @@ function AssessmentResult({
           </span>
         </div>
 
-        {/* CTO Head approval action */}
-        {status === "for_assessment" && !isApproved && canApprove && (
-          <div className="pt-2">
-            <Button onClick={handleApprove} disabled={loading}>
-              {loading && (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              )}
-              Approve Assessment
-            </Button>
+        {/* CTO Head approval, and re-stating the fees while still unapproved */}
+        {status === "for_assessment" && !isApproved && (canApprove || onRevise) && (
+          <div className="flex flex-wrap gap-2 pt-2">
+            {canApprove && (
+              <Button onClick={handleApprove} disabled={loading}>
+                {loading && (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                )}
+                Approve Assessment
+              </Button>
+            )}
+            {onRevise && (
+              <Button variant="outline" onClick={onRevise} disabled={loading}>
+                <Calculator className="mr-2 h-4 w-4" />
+                Revise Assessment
+              </Button>
+            )}
           </div>
         )}
       </CardContent>
