@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server"
 import { getSystemSettings } from "@/lib/actions/settings"
 import { displayAddress } from "@/lib/address"
+import { officeDateParts } from "@/lib/office-time"
 
 async function getAuthUser() {
   const supabase = await createClient()
@@ -57,10 +58,14 @@ const MONTHS = [
  * The permit runs on calendar years: granted in 2026 with 3-year validity
  * prints as 01 JANUARY 2026 – 31 DECEMBER 2028. This is presentation only —
  * mtop_franchises.granted_until still drives renewal reminders.
+ *
+ * The year is the one the office granted it in, not the one the server was
+ * having at the time — the same reckoning that numbers the permit.
  */
 function calendarValidity(grantedAt: string | null, validityYears: number) {
-  if (!grantedAt) return { from: "", to: "", year: "" }
-  const startYear = new Date(grantedAt).getFullYear()
+  const granted = officeDateParts(grantedAt)
+  if (!granted) return { from: "", to: "", year: "" }
+  const startYear = granted.year
   const endYear = startYear + Math.max(1, validityYears) - 1
   return {
     from: `01 JANUARY ${startYear}`,
@@ -70,12 +75,10 @@ function calendarValidity(grantedAt: string | null, validityYears: number) {
 }
 
 function formatDatePaid(value: string | null) {
-  if (!value) return ""
-  const d = new Date(value)
-  if (Number.isNaN(d.getTime())) return ""
-  return `${MONTHS[d.getMonth()][0]}${MONTHS[d.getMonth()]
-    .slice(1)
-    .toLowerCase()} ${d.getDate()}, ${d.getFullYear()}`
+  const paid = officeDateParts(value)
+  if (!paid) return ""
+  const month = MONTHS[paid.month - 1]
+  return `${month[0]}${month.slice(1).toLowerCase()} ${paid.day}, ${paid.year}`
 }
 
 function formatPeso(amount: number) {

@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server"
 import { getSystemSettings } from "@/lib/actions/settings"
 import { displayAddress } from "@/lib/address"
+import { officeDateParts } from "@/lib/office-time"
 
 async function getAuthUser() {
   const supabase = await createClient()
@@ -66,30 +67,27 @@ function ordinalSuffix(day: number): string {
   return "th"
 }
 
+/** The day the office granted it, not the day the server was having. */
 function grantedParts(grantedAt: string | null) {
-  if (!grantedAt)
-    return { grantedDay: "", grantedOrdinal: "", grantedMonth: "", grantedYear: "" }
-
-  const d = new Date(grantedAt)
-  if (Number.isNaN(d.getTime()))
+  const granted = officeDateParts(grantedAt)
+  if (!granted)
     return { grantedDay: "", grantedOrdinal: "", grantedMonth: "", grantedYear: "" }
 
   return {
-    grantedDay: String(d.getDate()),
-    grantedOrdinal: ordinalSuffix(d.getDate()),
-    grantedMonth: MONTHS[d.getMonth()],
-    grantedYear: String(d.getFullYear()),
+    grantedDay: String(granted.day),
+    grantedOrdinal: ordinalSuffix(granted.day),
+    grantedMonth: MONTHS[granted.month - 1],
+    grantedYear: String(granted.year),
   }
 }
 
 /** The slip writes the OR date numerically — 03/27/2026. */
 function formatSlipDate(value: string | null) {
-  if (!value) return ""
-  const d = new Date(value)
-  if (Number.isNaN(d.getTime())) return ""
-  const mm = String(d.getMonth() + 1).padStart(2, "0")
-  const dd = String(d.getDate()).padStart(2, "0")
-  return `${mm}/${dd}/${d.getFullYear()}`
+  const paid = officeDateParts(value)
+  if (!paid) return ""
+  const mm = String(paid.month).padStart(2, "0")
+  const dd = String(paid.day).padStart(2, "0")
+  return `${mm}/${dd}/${paid.year}`
 }
 
 export async function getConfirmationSlipData(applicationId: string): Promise<{

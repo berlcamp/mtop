@@ -81,7 +81,7 @@ Creation flow (`src/lib/actions/applications.ts`):
 
 | `grant_effect` | Transaction | What it does |
 |---|---|---|
-| `issue_number` | New Franchise | Assigns the next MTOP number via `mtop.next_mtop_number(year)` (year-prefixed, `2026-0001`) and sets `granted_until` |
+| `issue_number` | New Franchise | Assigns the next MTOP number via `mtop.next_mtop_number(year)` (`AO-2026-00001`) and sets `granted_until` |
 | `extend_validity` | Renewal | Advances `granted_until` to `granted_at + validity_years`, keeps the number |
 | `replace_unit` | Change of Unit | Copies `new_motor_number`/`new_chassis_number`/`new_plate_number` from the application onto the franchise; logs the old values to `mtop.franchise_unit_history`. `granted_until` is untouched — replacing a unit never extends the renewal due date |
 | `transfer_owner` | Change of Ownership | Copies `new_applicant_name`/`new_applicant_address`/`new_contact_number` from the application onto the franchise; logs the old values to `mtop.franchise_ownership_history` |
@@ -90,6 +90,8 @@ Creation flow (`src/lib/actions/applications.ts`):
 | `close_franchise` | Closure | Sets `franchise_status = 'closed'` and `closed_at`; `granted_until`/`mtop_number` are left as history |
 
 The `new_*` columns on `mtop_applications` are staged by `createFranchiseTransaction` at filing time and applied only here — the identity change (unit or owner) takes effect on grant, not on filing. `mtop.mtop_franchises.franchise_status` (`active` / `closed` / `abandoned` / `revoked` / `cancelled`) gates new filings — `createFranchiseTransaction` and the franchise lookup both refuse a non-`active` franchise. Only `close_franchise` sets it today; the 120-day abandonment sweep and 3-violation revocation from the ordinance are not implemented.
+
+An MTOP number is `AO-<grant year>-<5-digit counter>` — `AO-2026-00001`. The counter is per year, held in `mtop.mtop_number_counters` and handed out by `mtop.next_mtop_number()`; the printed form is `mtop.format_mtop_number()`, so the shape changes in one place. The year is the year the office granted it **in Ozamiz**: the database stores UTC and the server runs in UTC, so `mtop.grant_year()` / `mtop.grant_date()` (`20260413000026`) convert to `Asia/Manila` first, or a permit granted before 8am on 1 January would be numbered into the year that just ended. `src/lib/office-time.ts` mirrors them for the printed documents — the franchise card's validity years and the confirmation slip's "Given this … day of …" read the same calendar day as the number does. Numbers issued under the old `2026-0001` format are left alone; they are on paper in someone's hands.
 
 System settings drive both the validity period (`permit_validity_years`, default 3) and renewal window (`renewal_window_days`, default 90); managed in `src/lib/actions/settings.ts`.
 
