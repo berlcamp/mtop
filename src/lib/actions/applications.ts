@@ -7,6 +7,11 @@ import type {
   NewFranchiseApplicationFormValues,
   FranchiseTransactionFormValues,
 } from "@/lib/schemas/mtop"
+import {
+  normalizeOperatorName,
+  findCoOwnerMarker,
+  SINGLE_OPERATOR_MESSAGE,
+} from "@/lib/operator-name"
 import type {
   MtopStatus,
   TransactionType,
@@ -47,6 +52,38 @@ async function resolveTransactionType(
   if (error) return { error: error.message, data: null }
   if (!data) return { error: `Unknown transaction type "${code}".`, data: null }
   return { error: null, data: data as TransactionType }
+}
+
+/**
+ * The active franchise already held by this operator, if any.
+ *
+ * One franchise per operator is enforced by a partial unique index in the
+ * database (20260413000018); this lookup exists so the app can say *which*
+ * franchise is in the way instead of surfacing a duplicate-key error.
+ * `excludeFranchiseId` skips the franchise being acted on, so a transfer isn't
+ * blocked by the record it is itself changing.
+ */
+async function findOperatorsActiveFranchise(
+  supabase: Supabase,
+  operatorName: string,
+  excludeFranchiseId?: string
+) {
+  if (!normalizeOperatorName(operatorName)) return null
+
+  const { data } = await supabase
+    .schema("mtop")
+    .rpc("find_operator_active_franchise", {
+      p_name: operatorName,
+      p_exclude_franchise_id: excludeFranchiseId ?? null,
+    })
+
+  const hit = (data ?? []) as {
+    id: string
+    mtop_number: string | null
+    applicant_name: string
+  }[]
+
+  return hit[0] ?? null
 }
 
 /**
@@ -107,6 +144,30 @@ export async function createNewFranchiseApplication(
       await resolveTransactionType(supabase, "new_franchise")
     if (typeError || !transactionType)
       return { error: typeError, data: null }
+
+    // One operator per franchise.
+    const coOwner = findCoOwnerMarker(input.applicant_name)
+    if (coOwner) {
+      return {
+        error: `${SINGLE_OPERATOR_MESSAGE} (found "${coOwner}" in the name)`,
+        data: null,
+      }
+    }
+
+    // One franchise per operator. The database enforces this too; checking
+    // here lets us name the franchise that is in the way.
+    const heldFranchise = await findOperatorsActiveFranchise(
+      supabase,
+      input.applicant_name
+    )
+    if (heldFranchise) {
+      return {
+        error: `${heldFranchise.applicant_name} already holds an active franchise${
+          heldFranchise.mtop_number ? ` (${heldFranchise.mtop_number})` : " (application in progress)"
+        }. An operator may only hold one franchise — close the existing one first.`,
+        data: null,
+      }
+    }
 
     // Same motor + chassis = same vehicle = same franchise. Block duplicates.
     const { data: existing, error: existingError } = await supabase
@@ -245,6 +306,33 @@ export async function createFranchiseTransaction(
       }
     }
 
+    // A change of ownership names the successor up front, so the one-franchise
+    // -per-operator rule can be applied at filing rather than only at grant.
+    if (input.transaction_type_code === "change_ownership") {
+      const successor = input.new_applicant_name ?? ""
+      const successorCoOwner = findCoOwnerMarker(successor)
+      if (successorCoOwner) {
+        return {
+          error: `${SINGLE_OPERATOR_MESSAGE} (found "${successorCoOwner}" in the new owner's name)`,
+          data: null,
+        }
+      }
+
+      const successorHolds = await findOperatorsActiveFranchise(
+        supabase,
+        successor,
+        franchise.id
+      )
+      if (successorHolds) {
+        return {
+          error: `${successorHolds.applicant_name} already holds an active franchise${
+            successorHolds.mtop_number ? ` (${successorHolds.mtop_number})` : ""
+          }. An operator may only hold one franchise, so this transfer cannot be filed.`,
+          data: null,
+        }
+      }
+    }
+
     const { data: inflight, error: inflightError } = await supabase
       .schema("mtop")
       .from("mtop_applications")
@@ -336,6 +424,50 @@ export async function createFranchiseTransaction(
     return { error: null, data: application }
   } catch (e) {
     return { error: (e as Error).message, data: null }
+  }
+}
+
+/**
+ * Pre-flight for the operator-name field: reports whether this person can be
+ * given a franchise, so the form can say so before the clerk fills the rest of
+ * it. The authoritative checks still run in createNewFranchiseApplication and
+ * in the database.
+ */
+export async function checkOperatorAvailability(
+  operatorName: string,
+  excludeFranchiseId?: string
+): Promise<{
+  error: string | null
+  coOwnerMarker: string | null
+  heldFranchise: { mtop_number: string | null; applicant_name: string } | null
+}> {
+  try {
+    const { supabase } = await getAuthUser()
+
+    const coOwnerMarker = findCoOwnerMarker(operatorName)
+    if (coOwnerMarker) {
+      return { error: null, coOwnerMarker, heldFranchise: null }
+    }
+
+    const held = await findOperatorsActiveFranchise(
+      supabase,
+      operatorName,
+      excludeFranchiseId
+    )
+
+    return {
+      error: null,
+      coOwnerMarker: null,
+      heldFranchise: held
+        ? { mtop_number: held.mtop_number, applicant_name: held.applicant_name }
+        : null,
+    }
+  } catch (e) {
+    return {
+      error: (e as Error).message,
+      coOwnerMarker: null,
+      heldFranchise: null,
+    }
   }
 }
 

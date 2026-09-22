@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,10 @@ import {
   newFranchiseApplicationSchema,
   type NewFranchiseApplicationFormValues,
 } from "@/lib/schemas/mtop";
-import { createNewFranchiseApplication } from "@/lib/actions/applications"
+import {
+  createNewFranchiseApplication,
+  checkOperatorAvailability,
+} from "@/lib/actions/applications"
 import { AssociationSelect } from "@/components/mtop/association-select";
 import type { TransactionType } from "@/types/database";
 import { RequirementsPreview } from "./requirements-preview";
@@ -34,6 +37,14 @@ export function NewFranchiseForm({
   onSubmitted: (applicationId: string) => void;
 }) {
   const [serverError, setServerError] = useState<string | null>(null);
+
+  // Only one operator is allowed per franchise, and an operator may hold only
+  // one. Both are hard rules in the database — this just surfaces the answer
+  // while the clerk is still on the first field.
+  const [operatorBlock, setOperatorBlock] = useState<string | null>(null)
+  // Tracked off register()'s own onChange rather than react-hook-form's
+  // watch(), which React Compiler refuses to memoize around.
+  const [operatorName, setOperatorName] = useState("")
 
   const {
     register,
@@ -56,6 +67,36 @@ export function NewFranchiseForm({
       due_date: "",
     },
   });
+
+  const applicantNameField = register("applicant_name")
+
+  useEffect(() => {
+    const name = operatorName?.trim() ?? ""
+    if (name.length < 2) return
+
+    let cancelled = false
+    const timer = setTimeout(async () => {
+      const result = await checkOperatorAvailability(name)
+      if (cancelled || result.error) return
+
+      if (result.heldFranchise) {
+        setOperatorBlock(
+          `${result.heldFranchise.applicant_name} already holds an active franchise${
+            result.heldFranchise.mtop_number
+              ? ` (${result.heldFranchise.mtop_number})`
+              : " (application in progress)"
+          }. An operator may only hold one franchise.`
+        )
+      } else {
+        setOperatorBlock(null)
+      }
+    }, 400)
+
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [operatorName])
 
   async function onSubmit(data: NewFranchiseApplicationFormValues) {
     setServerError(null);
@@ -105,14 +146,20 @@ export function NewFranchiseForm({
                   <Input
                     id="applicant_name"
                     placeholder="Juan Dela Cruz"
-                    {...register("applicant_name")}
+                    {...applicantNameField}
+                    onChange={(e) => {
+                      applicantNameField.onChange(e)
+                      setOperatorName(e.target.value)
+                    }}
                     aria-invalid={!!errors.applicant_name}
                   />
-                  {errors.applicant_name && (
+                  {errors.applicant_name ? (
                     <p className="text-xs text-destructive">
                       {errors.applicant_name.message}
                     </p>
-                  )}
+                  ) : operatorBlock ? (
+                    <p className="text-xs text-destructive">{operatorBlock}</p>
+                  ) : null}
                 </div>
 
                 <div className="space-y-2">

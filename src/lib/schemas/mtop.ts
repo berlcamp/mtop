@@ -1,9 +1,14 @@
 import { z } from "zod"
+import { findCoOwnerMarker, SINGLE_OPERATOR_MESSAGE } from "@/lib/operator-name"
 
 // Franchise (stable owner + tricycle identity).
 // Used both standalone and as the base for new-franchise application input.
 export const franchiseSchema = z.object({
-  applicant_name: z.string().min(2, "Applicant name must be at least 2 characters"),
+  applicant_name: z
+    .string()
+    .min(2, "Applicant name must be at least 2 characters")
+    // One operator per franchise — see src/lib/operator-name.ts.
+    .refine((v) => !findCoOwnerMarker(v), SINGLE_OPERATOR_MESSAGE),
   applicant_address: z.string().min(5, "Address must be at least 5 characters"),
   contact_number: z.string().min(7, "Contact number must be at least 7 characters"),
   tricycle_body_number: z.string().min(1, "Body number is required"),
@@ -67,7 +72,11 @@ const franchiseTransactionBaseSchema = z.object({
   new_motor_number: z.string().trim().optional(),
   new_chassis_number: z.string().trim().optional(),
   new_plate_number: z.string().trim().optional(),
-  new_applicant_name: z.string().trim().optional(),
+  new_applicant_name: z
+    .string()
+    .trim()
+    .refine((v) => !v || !findCoOwnerMarker(v), SINGLE_OPERATOR_MESSAGE)
+    .optional(),
   new_applicant_address: z.string().trim().optional(),
   new_contact_number: z.string().trim().optional(),
 })

@@ -100,6 +100,17 @@ Only **mandatory, non-conditional** items block forwarding out of verification �
 
 To add or reword a checklist item, `INSERT`/`UPDATE` these tables. Do not add TypeScript arrays of requirement codes.
 
+### Franchise Ownership Rules
+
+Two hard rules, enforced in the database (`20260413000018_one_operator_per_franchise.sql`) so no code path can bypass them:
+
+1. **One franchise per operator** — a partial unique index on `mtop.normalize_operator_name(applicant_name)` `WHERE franchise_status = 'active'`. Closed/abandoned/revoked franchises stop counting, so surrendering one frees the operator to apply again.
+2. **One operator per franchise** — `CHECK` constraints on `mtop_franchises.applicant_name` and `mtop_applications.new_applicant_name` reject co-ownership markers (`&`, `/`, standalone `AND`, `ET AL`). Commas are allowed — `DELA CRUZ, JUAN` is one person written surname-first.
+
+Name matching is normalised for case, spacing and punctuation but is **not fuzzy**: `JUAN DELA CRUZ` and `JUAN P. DELA CRUZ` are two different operators.
+
+`src/lib/operator-name.ts` mirrors both SQL helpers so forms can warn early and the actions can return a readable sentence — but all real matching goes through `mtop.find_operator_active_franchise()` (an RPC that hits the unique index), so the TS copy can't drift from the constraint. `grant_franchise()` re-checks on `transfer_owner`, since a successor could acquire their own franchise between filing and grant.
+
 ### Associations
 
 Most motorcabs belong to an operators' association (MODA); strikers operate without one, so `association_id` is nullable and "No association" is the picker's default first option. `mtop.associations` holds the registry (name, president, contact number, `is_active`), seeded from the AOMODA directory with 70 entries, and `mtop_franchises.association_id` links each franchise to one.
