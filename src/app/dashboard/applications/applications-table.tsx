@@ -114,7 +114,10 @@ export function ApplicationsTable({
     let query = supabase
       .schema("mtop")
       .from("mtop_applications")
-      .select("*, franchise:mtop_franchises(*)", { count: "exact" })
+      .select(
+        "*, franchise:mtop_franchises(*), transaction_type:transaction_types(id, code, name)",
+        { count: "exact" }
+      )
       .order("created_at", { ascending: false })
 
     if (status !== "all") {
