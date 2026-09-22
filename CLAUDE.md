@@ -61,6 +61,8 @@ Reopening only moves the status; what makes it useful is that the stage it lands
 - **Assessment** — same shape. **Revise Assessment** is offered while the assessment is still unapproved; once the CTO head has approved it, the figure is what the operator was told to pay and is no longer a form to edit.
 - **Requirements** — editable to anyone with `application.verify` at any stage before `granted`/`rejected`, not only at `for_verification`. A missing document is often raised later, by an inspector or assessor, and the counter has to be able to attach it when the operator brings it in. Same rule as the franchise photos card.
 
+Separately, an **administrator** (`admin.manage`) can correct any stage until the permit is granted — `adminEdit` in `application-detail.tsx`, threaded into the inspection, assessment and payment components as a prop. The admin role already carries every permission, so what blocked it was the stage each component checks for itself: the inspection only at `for_inspection`, the assessment only while unapproved, payments only at `for_assessment`. `granted` is the line — once the permit exists the record behind it is settled and is corrected by filing a transaction, not by editing. Stage *transitions* are untouched: forwarding, returning and approving stay where they belong, because an override is for fixing a record, not for driving the workflow from the wrong desk.
+
 Every status change inserts a row into `mtop.approval_logs`.
 
 ### Franchise vs Application

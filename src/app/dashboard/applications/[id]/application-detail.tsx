@@ -151,6 +151,14 @@ export function ApplicationDetail({
     setRemarks("")
   }
 
+  // An administrator can correct any stage until the permit is granted. An
+  // error found at approval shouldn't mean walking the application back
+  // through the flow, and the admin role already carries every permission —
+  // what stood in their way was the stage each component checks for itself.
+  // Granting is the line: once the permit exists, the record behind it is
+  // settled and is corrected by filing a transaction, not by editing.
+  const adminEdit = can("admin.manage") && application.status !== "granted"
+
   const requirements = application.requirements ?? []
   const transactionType = application.transaction_type
   // Only mandatory, non-conditional items gate the forward button.
@@ -447,9 +455,10 @@ export function ApplicationDetail({
             applicationId={application.id}
             transactionName={transactionType?.name}
             canVerify={
-              can("application.verify") &&
-              application.status !== "granted" &&
-              application.status !== "rejected"
+              (can("application.verify") &&
+                application.status !== "granted" &&
+                application.status !== "rejected") ||
+              adminEdit
             }
           />
 
@@ -463,13 +472,18 @@ export function ApplicationDetail({
               existingInspection={application.inspection}
               canInspect={can("inspection.conduct")}
               status={application.status}
+              adminEdit={adminEdit}
             />
           )}
 
-          {/* Assessment & Payment — show from for_assessment stage onward */}
-          {["for_assessment", "for_approval", "granted"].includes(
+          {/* Assessment & Payment — show from for_assessment stage onward, and
+              to an administrator wherever an assessment already exists, so a
+              returned application's fees are reachable without reopening it
+              first. */}
+          {(["for_assessment", "for_approval", "granted"].includes(
             application.status
-          ) && (
+          ) ||
+            (adminEdit && !!application.assessment)) && (
             <>
               <FeeAssessmentForm
                 applicationId={application.id}
@@ -478,6 +492,7 @@ export function ApplicationDetail({
                 canAssess={can("assessment.create")}
                 canApproveAssessment={can("assessment.approve")}
                 status={application.status}
+                adminEdit={adminEdit}
               />
 
               {application.assessment && (
@@ -489,6 +504,7 @@ export function ApplicationDetail({
                   existingPayments={application.payments ?? []}
                   canRecord={can("payment.record")}
                   status={application.status}
+                  adminEdit={adminEdit}
                 />
               )}
             </>

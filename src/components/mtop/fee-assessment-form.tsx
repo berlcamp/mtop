@@ -38,6 +38,8 @@ interface FeeAssessmentFormProps {
   canAssess: boolean
   canApproveAssessment: boolean
   status: MtopStatus
+  /** Administrators may restate the fees at any stage before granting. */
+  adminEdit?: boolean
 }
 
 export function FeeAssessmentForm({
@@ -47,16 +49,19 @@ export function FeeAssessmentForm({
   canAssess,
   canApproveAssessment,
   status,
+  adminEdit = false,
 }: FeeAssessmentFormProps) {
   const [reassessing, setReassessing] = useState(false)
 
-  const canRecord = status === "for_assessment" && canAssess
+  const canRecord = (status === "for_assessment" || adminEdit) && canAssess
   // Fees can be re-stated while the assessment is still unapproved — an
   // application returned over a wrong amount is reopened at this stage and
   // would otherwise have nowhere to correct it. Once the CTO head has
   // approved, the figure is what the operator was told to pay, so revising it
-  // is not a matter of editing a form.
-  const canRevise = canRecord && !existingAssessment?.approved_at
+  // is not a matter of editing a form — except for an administrator, who can
+  // correct a mistake that was only noticed after approval.
+  const canRevise =
+    canRecord && (!existingAssessment?.approved_at || adminEdit)
 
   if (existingAssessment && !reassessing) {
     return (
@@ -453,10 +458,12 @@ function AssessmentResult({
           </span>
         </div>
 
-        {/* CTO Head approval, and re-stating the fees while still unapproved */}
-        {status === "for_assessment" && !isApproved && (canApprove || onRevise) && (
+        {/* CTO Head approval belongs to this stage; revising is offered
+            wherever onRevise was granted. */}
+        {((status === "for_assessment" && !isApproved && canApprove) ||
+          onRevise) && (
           <div className="flex flex-wrap gap-2 pt-2">
-            {canApprove && (
+            {canApprove && status === "for_assessment" && !isApproved && (
               <Button onClick={handleApprove} disabled={loading}>
                 {loading && (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />

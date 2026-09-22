@@ -34,6 +34,8 @@ interface InspectionChecklistProps {
   existingInspection: any | null
   canInspect: boolean
   status: MtopStatus
+  /** Administrators may correct the inspection at any stage before granting. */
+  adminEdit?: boolean
 }
 
 export function InspectionChecklist({
@@ -41,14 +43,16 @@ export function InspectionChecklist({
   existingInspection,
   canInspect,
   status,
+  adminEdit = false,
 }: InspectionChecklistProps) {
   const { profile } = useProfile()
   const [reinspecting, setReinspecting] = useState(false)
 
   // Recording an inspection is allowed whenever the application is sitting at
   // this stage — including after it was returned for a failed inspection and
-  // then reopened, which is the whole point of reopening it.
-  const canRecord = status === "for_inspection" && canInspect
+  // then reopened, which is the whole point of reopening it — and, for an
+  // administrator, at any stage until the permit is granted.
+  const canRecord = (status === "for_inspection" || adminEdit) && canInspect
 
   // An inspection already on file is shown as a result, not a form. It stays
   // that way unless the inspector explicitly starts a re-inspection: the row
@@ -393,8 +397,10 @@ function InspectionResult({
           </div>
         )}
 
-        {/* Actions — only at for_inspection stage */}
-        {status === "for_inspection" && canInspect && (
+        {/* Forwarding and returning belong to this stage; re-inspecting is
+            offered wherever onReinspect was granted, which for an
+            administrator is any stage before the permit is granted. */}
+        {((status === "for_inspection" && canInspect) || onReinspect) && (
           <div className="flex flex-wrap gap-2 pt-2">
             {/* A failed unit that has been fixed is re-inspected, not edited:
                 the failed visit stays on record and a fresh row is written.
@@ -406,7 +412,7 @@ function InspectionResult({
                 Re-inspect
               </Button>
             )}
-            {isPassed && (
+            {isPassed && status === "for_inspection" && canInspect && (
               <Button onClick={handleForward} disabled={loading}>
                 {loading && (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -414,7 +420,7 @@ function InspectionResult({
                 Forward to Assessment
               </Button>
             )}
-            {!isPassed && (
+            {!isPassed && status === "for_inspection" && canInspect && (
               <Button
                 variant="destructive"
                 onClick={handleFailReturn}

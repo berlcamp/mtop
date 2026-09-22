@@ -34,6 +34,8 @@ interface PaymentFormProps {
   existingPayments: any[]
   canRecord: boolean
   status: MtopStatus
+  /** Administrators may record a payment at any stage before granting. */
+  adminEdit?: boolean
 }
 
 export function PaymentForm({
@@ -44,23 +46,35 @@ export function PaymentForm({
   existingPayments,
   canRecord,
   status,
+  adminEdit = false,
 }: PaymentFormProps) {
+  const [recordingAnother, setRecordingAnother] = useState(false)
+
+  // Recording belongs to the assessment stage, and to an administrator at any
+  // stage before the permit is granted. The assessment still has to be
+  // approved first — what is owed is not a matter of opinion.
+  const canRecordNow =
+    (status === "for_assessment" || adminEdit) &&
+    isAssessmentApproved &&
+    canRecord
+
   // Show existing payments if any
-  if (existingPayments.length > 0) {
+  if (existingPayments.length > 0 && !recordingAnother) {
     return (
       <PaymentReceipt
         payments={existingPayments}
         totalAmount={totalAmount}
+        // Payments are only ever inserted — there is no action that edits or
+        // voids one — so correcting an entry means recording another against
+        // the same assessment, which the receipt then shows alongside it.
+        onRecordAnother={
+          canRecordNow && adminEdit ? () => setRecordingAnother(true) : undefined
+        }
       />
     )
   }
 
-  // Only show form if assessment is approved and user can record
-  if (
-    status !== "for_assessment" ||
-    !isAssessmentApproved ||
-    !canRecord
-  ) {
+  if (!canRecordNow) {
     return null
   }
 
@@ -69,6 +83,12 @@ export function PaymentForm({
       applicationId={applicationId}
       assessmentId={assessmentId}
       totalAmount={totalAmount}
+      onCancel={
+        existingPayments.length > 0
+          ? () => setRecordingAnother(false)
+          : undefined
+      }
+      onSaved={() => setRecordingAnother(false)}
     />
   )
 }
@@ -77,10 +97,14 @@ function PaymentFormInner({
   applicationId,
   assessmentId,
   totalAmount,
+  onCancel,
+  onSaved,
 }: {
   applicationId: string
   assessmentId: string
   totalAmount: number
+  onCancel?: () => void
+  onSaved?: () => void
 }) {
   const router = useRouter()
   const { profile } = useProfile()
@@ -113,6 +137,7 @@ function PaymentFormInner({
     }
 
     router.refresh()
+    onSaved?.()
   }
 
   return (
@@ -203,12 +228,24 @@ function PaymentFormInner({
             </strong>
           </p>
 
-          <Button type="submit" disabled={isSubmitting}>
-            {isSubmitting && (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          <div className="flex gap-2">
+            <Button type="submit" disabled={isSubmitting}>
+              {isSubmitting && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
+              Record Payment &amp; Forward to Approval
+            </Button>
+            {onCancel && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onCancel}
+                disabled={isSubmitting}
+              >
+                Cancel
+              </Button>
             )}
-            Record Payment &amp; Forward to Approval
-          </Button>
+          </div>
         </form>
       </CardContent>
     </Card>
@@ -218,10 +255,12 @@ function PaymentFormInner({
 function PaymentReceipt({
   payments,
   totalAmount,
+  onRecordAnother,
 }: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   payments: any[]
   totalAmount: number
+  onRecordAnother?: () => void
 }) {
   const totalPaid = payments.reduce(
     (sum: number, p: { amount_paid: number }) => sum + Number(p.amount_paid),
@@ -274,6 +313,13 @@ function PaymentReceipt({
               </span>
             </div>
           )
+        )}
+
+        {onRecordAnother && (
+          <Button variant="outline" size="sm" onClick={onRecordAnother}>
+            <Banknote className="mr-2 h-4 w-4" />
+            Record another payment
+          </Button>
         )}
       </CardContent>
     </Card>
