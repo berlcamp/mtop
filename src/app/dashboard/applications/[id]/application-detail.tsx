@@ -446,6 +446,7 @@ export function ApplicationDetail({
               canEdit={
                 can("application.verify") && application.status !== "granted"
               }
+              atVerification={application.status === "for_verification"}
             />
           )}
 

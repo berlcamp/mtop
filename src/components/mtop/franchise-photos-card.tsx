@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import {
   Card,
@@ -47,6 +47,12 @@ interface FranchisePhotosCardProps {
   make: string | null
   dayOff: string | null
   canEdit: boolean
+  /**
+   * True at `for_verification`, where these details are still being taken down
+   * from the operator. The card is a form outright at that stage; afterwards
+   * it is a record that happens to be correctable.
+   */
+  atVerification: boolean
 }
 
 export function FranchisePhotosCard({
@@ -60,6 +66,7 @@ export function FranchisePhotosCard({
   make,
   dayOff,
   canEdit,
+  atVerification,
 }: FranchisePhotosCardProps) {
   const [photos, setPhotos] = useState<Record<Slot, string | null>>({
     owner: ownerPhotoUrl,
@@ -83,6 +90,20 @@ export function FranchisePhotosCard({
   const [form, setForm] = useState(saved)
   const [editing, setEditing] = useState(false)
   const [savingDriver, setSavingDriver] = useState(false)
+  const saveTimeout = useRef<NodeJS.Timeout | null>(null)
+
+  // At verification the counter is still filling this in, so the fields are
+  // simply there — no Edit button to press first, and each one saves itself.
+  // Later the application is a record being read, and changing it is a
+  // deliberate act with a Save behind it.
+  const inlineEdit = canEdit && atVerification
+  const showForm = inlineEdit || editing
+
+  useEffect(() => {
+    return () => {
+      if (saveTimeout.current) clearTimeout(saveTimeout.current)
+    }
+  }, [])
 
   async function removeStoredPhoto(url: string | null) {
     if (!url) return
@@ -158,8 +179,36 @@ export function FranchisePhotosCard({
     }
   }
 
+  async function persistDriver(values: typeof form): Promise<boolean> {
+    setSavingDriver(true)
+    setError(null)
+
+    const result = await updateFranchiseDriverDetails(
+      franchiseId,
+      applicationId,
+      values
+    )
+
+    if (result.error) {
+      setError(result.error)
+      setSavingDriver(false)
+      return false
+    }
+
+    setSaved(values)
+    setSavingDriver(false)
+    return true
+  }
+
   function set(field: keyof typeof form, value: string) {
-    setForm((prev) => ({ ...prev, [field]: value }))
+    const next = { ...form, [field]: value }
+    setForm(next)
+
+    if (!inlineEdit) return
+    // Nothing to press at this stage, so the field saves a beat after typing
+    // stops — the same pattern as the document remarks field.
+    if (saveTimeout.current) clearTimeout(saveTimeout.current)
+    saveTimeout.current = setTimeout(() => void persistDriver(next), 800)
   }
 
   function startEditing() {
@@ -171,25 +220,10 @@ export function FranchisePhotosCard({
   }
 
   async function handleSaveDriver() {
-    setSavingDriver(true)
-    setError(null)
-
-    const result = await updateFranchiseDriverDetails(
-      franchiseId,
-      applicationId,
-      form
-    )
-
-    if (result.error) {
-      setError(result.error)
-      setSavingDriver(false)
-      return
+    if (await persistDriver(form)) {
+      setEditing(false)
+      router.refresh()
     }
-
-    setSaved(form)
-    setSavingDriver(false)
-    setEditing(false)
-    router.refresh()
   }
 
   return (
@@ -200,13 +234,16 @@ export function FranchisePhotosCard({
             <CardTitle className="text-lg flex items-center gap-2">
               <Camera className="h-4 w-4" />
               Photos &amp; Card Details
+              {inlineEdit && savingDriver && (
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+              )}
             </CardTitle>
             <CardDescription>
               Portraits and driver information used to generate the Franchise
               Card.
             </CardDescription>
           </div>
-          {canEdit && !editing && (
+          {canEdit && !showForm && (
             <Button
               type="button"
               variant="outline"
@@ -241,7 +278,7 @@ export function FranchisePhotosCard({
           />
         </div>
 
-        {editing ? (
+        {showForm ? (
           <>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
@@ -305,21 +342,23 @@ export function FranchisePhotosCard({
               </div>
             </div>
 
-            <div className="flex gap-2">
-              <Button onClick={handleSaveDriver} disabled={savingDriver}>
-                {savingDriver && (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                )}
-                Save Changes
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => setEditing(false)}
-                disabled={savingDriver}
-              >
-                Cancel
-              </Button>
-            </div>
+            {editing && (
+              <div className="flex gap-2">
+                <Button onClick={handleSaveDriver} disabled={savingDriver}>
+                  {savingDriver && (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  )}
+                  Save Changes
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setEditing(false)}
+                  disabled={savingDriver}
+                >
+                  Cancel
+                </Button>
+              </div>
+            )}
           </>
         ) : (
           <dl className="grid gap-4 sm:grid-cols-2">
