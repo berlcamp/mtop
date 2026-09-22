@@ -25,6 +25,7 @@ const SEGMENT_LABELS: Record<string, string> = {
   admin: "Admin",
   users: "Users",
   settings: "Settings",
+  associations: "Associations",
   account: "Account",
 }
 

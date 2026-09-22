@@ -100,6 +100,7 @@ export interface MtopFranchise {
   route: string | null
   make: string | null
   day_off: string | null
+  association_id: string | null
   granted_until: string | null
   franchise_status: FranchiseStatus
   closed_at: string | null
@@ -179,6 +180,17 @@ export interface TransactionType {
   sort_order: number
   is_active: boolean
   created_at: string
+}
+
+export interface Association {
+  id: string
+  name: string
+  president_name: string | null
+  contact_number: string | null
+  is_active: boolean
+  sort_order: number
+  created_at: string
+  updated_at: string
 }
 
 export interface Requirement {
@@ -377,6 +389,7 @@ export interface MtopSchema {
         | "closed_at"
         | "last_confirmed_at"
         | "last_reissued_at"
+        | "association_id"
       > & {
         id?: string
         created_at?: string
@@ -392,6 +405,7 @@ export interface MtopSchema {
         closed_at?: string | null
         last_confirmed_at?: string | null
         last_reissued_at?: string | null
+        association_id?: string | null
       }
       Update: Partial<Omit<MtopFranchise, "id">>
     }
@@ -447,6 +461,20 @@ export interface MtopSchema {
       Row: TransactionType
       Insert: Omit<TransactionType, "id" | "created_at"> & { id?: string; created_at?: string }
       Update: Partial<Omit<TransactionType, "id">>
+    }
+    associations: {
+      Row: Association
+      Insert: Omit<
+        Association,
+        "id" | "is_active" | "sort_order" | "created_at" | "updated_at"
+      > & {
+        id?: string
+        is_active?: boolean
+        sort_order?: number
+        created_at?: string
+        updated_at?: string
+      }
+      Update: Partial<Omit<Association, "id">>
     }
     requirements: {
       Row: Requirement

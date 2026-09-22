@@ -11,6 +11,8 @@ export const franchiseSchema = z.object({
   motor_number: z.string().min(1, "Motor number is required"),
   chassis_number: z.string().min(1, "Chassis number is required"),
   route: z.string().min(1, "Route is required"),
+  // Every motorcab belongs to an operators' association (MODA).
+  association_id: z.string().uuid("Select an association"),
   // Printed on the Franchise Card; optional so existing franchises stay valid.
   make: z.string().trim().max(60).optional(),
   day_off: z.string().trim().max(60).optional(),
@@ -56,6 +58,7 @@ const franchiseTransactionBaseSchema = z.object({
   route: z.string().min(1).optional(),
   make: z.string().trim().max(60).optional(),
   day_off: z.string().trim().max(60).optional(),
+  association_id: z.string().uuid().optional().or(z.literal("")),
   due_date: z.string().optional(),
   // Staged, not applied — mtop.grant_franchise() applies these to the
   // franchise only once the transaction is actually granted. See

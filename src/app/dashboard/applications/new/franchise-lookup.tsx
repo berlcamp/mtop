@@ -16,6 +16,7 @@ import type { MtopFranchise, TransactionType } from "@/types/database"
 
 export type FranchiseSearchHit = MtopFranchise & {
   has_active_application?: boolean
+  association?: { id: string; name: string } | null
 }
 
 export function FranchiseLookup({

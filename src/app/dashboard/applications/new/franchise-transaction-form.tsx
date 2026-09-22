@@ -25,6 +25,7 @@ import type { TransactionType } from "@/types/database"
 import type { FranchiseSearchHit } from "./franchise-lookup"
 import { RequirementsPreview } from "./requirements-preview"
 import { ReadOnlyField } from "./read-only-field"
+import { AssociationSelect } from "@/components/mtop/association-select"
 
 type ExistingCode = (typeof existingFranchiseTransactionCodes)[number]
 
@@ -59,6 +60,7 @@ export function FranchiseTransactionForm({
       route: franchise.route ?? "",
       make: franchise.make ?? "",
       day_off: franchise.day_off ?? "",
+      association_id: franchise.association_id ?? "",
       due_date: "",
     },
   })
@@ -205,6 +207,24 @@ export function FranchiseTransactionForm({
                 <div className="space-y-2">
                   <Label htmlFor="day_off">Day Off</Label>
                   <Input id="day_off" {...register("day_off")} />
+                </div>
+
+                <div className="space-y-2 sm:col-span-2">
+                  <Label htmlFor="association_id">Association</Label>
+                  <AssociationSelect
+                    id="association_id"
+                    currentAssociation={
+                      franchise.association_id
+                        ? {
+                            id: franchise.association_id,
+                            name:
+                              franchise.association?.name ??
+                              "Current association",
+                          }
+                        : null
+                    }
+                    {...register("association_id")}
+                  />
                 </div>
               </div>
 

@@ -35,6 +35,7 @@ import {
   Loader2,
   Printer,
   ArrowRight,
+  Building2,
 } from "lucide-react"
 import { format } from "date-fns"
 import { updateApplicationStatus } from "@/lib/actions/applications"
@@ -328,6 +329,11 @@ export function ApplicationDetail({ application, settings }: { application: any;
                   label="Route"
                   value={franchise?.route}
                   icon={<MapPin className="h-3.5 w-3.5" />}
+                />
+                <InfoItem
+                  label="Association"
+                  value={franchise?.association?.name}
+                  icon={<Building2 className="h-3.5 w-3.5" />}
                 />
                 <InfoItem
                   label="Fiscal Year"

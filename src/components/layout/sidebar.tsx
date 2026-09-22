@@ -22,6 +22,7 @@ import {
   BarChart3,
   Users,
   Settings,
+  Building2,
 } from "lucide-react"
 
 interface NavItem {
@@ -53,6 +54,12 @@ const adminItems: NavItem[] = [
     title: "Users",
     href: "/dashboard/admin/users",
     icon: Users,
+    permissions: ["admin.manage"],
+  },
+  {
+    title: "Associations",
+    href: "/dashboard/admin/associations",
+    icon: Building2,
     permissions: ["admin.manage"],
   },
   {

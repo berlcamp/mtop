@@ -139,6 +139,7 @@ export async function createNewFranchiseApplication(
         motor_number: input.motor_number,
         chassis_number: input.chassis_number,
         route: input.route,
+        association_id: input.association_id,
         make: input.make?.trim() || null,
         day_off: input.day_off?.trim() || null,
         created_by: user.id,
@@ -286,6 +287,10 @@ export async function createFranchiseTransaction(
       franchiseUpdates.make = input.make?.trim() || null
     if (input.day_off !== undefined)
       franchiseUpdates.day_off = input.day_off?.trim() || null
+    // Empty string means "left blank", not "clear it" — the picker submits ""
+    // when nothing is chosen.
+    if (input.association_id)
+      franchiseUpdates.association_id = input.association_id
 
     const { error: updateError } = await supabase
       .schema("mtop")
@@ -344,7 +349,7 @@ export async function searchFranchises(query: string, limit = 10) {
       .schema("mtop")
       .from("mtop_franchises")
       .select(
-        "*, applications:mtop_applications(id, status, fiscal_year, granted_at)"
+        "*, association:associations(id, name), applications:mtop_applications(id, status, fiscal_year, granted_at)"
       )
       .or(
         `mtop_number.ilike.%${trimmed}%,applicant_name.ilike.%${trimmed}%`
@@ -391,7 +396,7 @@ export async function getApplications(filters: ApplicationFilters = {}) {
       .schema("mtop")
       .from("mtop_applications")
       .select(
-        "*, franchise:mtop_franchises(*), transaction_type:transaction_types(*)",
+        "*, franchise:mtop_franchises(*, association:associations(id, name)), transaction_type:transaction_types(*)",
         { count: "exact" }
       )
       .order("created_at", { ascending: false })
@@ -438,7 +443,7 @@ export async function getApplication(id: string) {
       .schema("mtop")
       .from("mtop_applications")
       .select(
-        "*, franchise:mtop_franchises(*), transaction_type:transaction_types(*), creator:user_profiles!created_by(id, full_name, email)"
+        "*, franchise:mtop_franchises(*, association:associations(id, name)), transaction_type:transaction_types(*), creator:user_profiles!created_by(id, full_name, email)"
       )
       .eq("id", id)
       .single()

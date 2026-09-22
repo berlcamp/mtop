@@ -19,7 +19,8 @@ import {
   newFranchiseApplicationSchema,
   type NewFranchiseApplicationFormValues,
 } from "@/lib/schemas/mtop";
-import { createNewFranchiseApplication } from "@/lib/actions/applications";
+import { createNewFranchiseApplication } from "@/lib/actions/applications"
+import { AssociationSelect } from "@/components/mtop/association-select";
 import type { TransactionType } from "@/types/database";
 import { RequirementsPreview } from "./requirements-preview";
 
@@ -49,6 +50,7 @@ export function NewFranchiseForm({
       motor_number: "",
       chassis_number: "",
       route: "",
+      association_id: "",
       make: "",
       day_off: "",
       due_date: "",
@@ -231,6 +233,20 @@ export function NewFranchiseForm({
                     placeholder="e.g., Every Tuesday and Sunday"
                     {...register("day_off")}
                   />
+                </div>
+
+                <div className="space-y-2 sm:col-span-2">
+                  <Label htmlFor="association_id">Association</Label>
+                  <AssociationSelect
+                    id="association_id"
+                    invalid={!!errors.association_id}
+                    {...register("association_id")}
+                  />
+                  {errors.association_id && (
+                    <p className="text-xs text-destructive">
+                      {errors.association_id.message}
+                    </p>
+                  )}
                 </div>
               </div>
             </CardContent>
