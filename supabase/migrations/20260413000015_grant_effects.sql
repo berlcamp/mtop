@@ -113,6 +113,25 @@ CREATE INDEX idx_franchise_ownership_history_franchise_id ON mtop.franchise_owne
 -- the transaction's grant_effect and its staged new_* values. Everything it
 -- writes is wrapped in the single call the trigger-less caller already makes
 -- inside updateApplicationStatus, so one failure rolls back the whole grant.
+--
+-- The DROP is what makes that rename possible. Migrations 1, 7 and 12 declared
+-- this same function with the first parameter named p_franchise_id, and
+-- Postgres refuses to rename an input parameter through CREATE OR REPLACE:
+--
+--   ERROR: cannot change name of input parameter "p_franchise_id" (SQLSTATE 42P13)
+--
+-- Without it the chain cannot be replayed on an empty database, which is what
+-- standing up a staging environment or restoring from migrations alone means.
+-- Existing databases are unaffected: they are past this migration already, and
+-- the version is recorded, so it does not run again.
+--
+-- Dropping by signature rather than by name — the types are unchanged, only the
+-- parameter name moved. Nothing in the database depends on this function (it is
+-- called over RPC from updateApplicationStatus, never from a trigger or a view),
+-- so no CASCADE is needed, and the GRANT EXECUTE at the end of this migration
+-- puts back the privileges the drop takes with it.
+
+DROP FUNCTION IF EXISTS mtop.grant_franchise(UUID, TIMESTAMPTZ, INTEGER);
 
 CREATE OR REPLACE FUNCTION mtop.grant_franchise(
   p_application_id UUID,
