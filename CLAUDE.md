@@ -199,6 +199,8 @@ Most other actions in `src/lib/actions/` still check only that the caller is sig
 - `src/components/shared/` — reusable domain-agnostic components (`StatusBadge`, `ApprovalStepper`, `TimelineLog`, `ExpirationBadge`)
 - `src/components/mtop/` — domain-specific forms (`RequirementChecklist`, `InspectionChecklist`, `FeeAssessmentForm`, `PaymentForm`)
 
+Every write on the application detail page goes through `useGuardedAction()` (`src/components/shared/guarded-action.tsx`): `confirm()` asks first, `start()` puts up the `BusyOverlay`, and `finish()` refreshes and holds the overlay until the refreshed page lands. A new action button on that page should use it too. The one exception is the photos card's inline autosave at verification, which fires as the clerk types.
+
 ### Route Structure
 
 All authenticated routes live under `/dashboard`. The dashboard layout (`src/app/dashboard/layout.tsx`) is a **Client Component** that wraps children in `ProfileProvider` + `SidebarProvider`.

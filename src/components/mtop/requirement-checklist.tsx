@@ -18,6 +18,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Checkbox } from "@/components/ui/checkbox"
+import {
+  useGuardedAction,
+  type GuardedAction,
+} from "@/components/shared/guarded-action"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
@@ -493,6 +497,9 @@ function RequirementChecklistDialog({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [confirmDiscard, setConfirmDiscard] = useState(false)
+  // Shared with the bundle and every row, so one overlay covers any write in
+  // this dialog and the dialog knows not to close underneath it.
+  const guard = useGuardedAction()
   // Opening a dialog focuses its first control, which put a focus ring on a
   // collapsed group header. The scrolling list takes it instead, so the arrow
   // keys move the checklist the moment it opens.
@@ -551,6 +558,10 @@ function RequirementChecklistDialog({
       return
     }
 
+    // The overlay sits outside this dialog, so a click on it reads as a click
+    // outside — which must not close the checklist mid-save.
+    if (guard.busy) return
+
     if (dirty && !confirmDiscard) {
       setConfirmDiscard(true)
       return
@@ -565,6 +576,15 @@ function RequirementChecklistDialog({
   }
 
   async function handleSave() {
+    const ok = await guard.confirm({
+      title: `Save ${changes.length} ${changes.length === 1 ? "change" : "changes"} to the checklist?`,
+      description:
+        "Ticks and remarks are recorded against this application under your name.",
+      confirmLabel: "Save",
+    })
+    if (!ok) return
+
+    guard.start("Saving the checklist…")
     setSaving(true)
     setError(null)
 
@@ -573,11 +593,13 @@ function RequirementChecklistDialog({
     if (result.error) {
       setError(result.error)
       setSaving(false)
+      guard.stop()
       return
     }
 
     setSaving(false)
     onOpenChange(false)
+    guard.finish()
   }
 
   return (
@@ -625,6 +647,7 @@ function RequirementChecklistDialog({
                 applicationId={applicationId}
                 bundle={bundle}
                 disabled={saving}
+                guard={guard}
               />
             </div>
           </section>
@@ -687,6 +710,7 @@ function RequirementChecklistDialog({
                             }
                             onChange={(patch) => setRow(item.id, patch)}
                             disabled={saving}
+                            guard={guard}
                           />
                         ))}
                       </div>
@@ -753,7 +777,9 @@ function RequirementChecklistDialog({
             )}
           </div>
         </DialogFooter>
+        {guard.confirmDialog}
       </DialogContent>
+      {guard.overlay}
     </Dialog>
   )
 }
@@ -770,10 +796,12 @@ function BundleUploader({
   applicationId,
   bundle,
   disabled,
+  guard,
 }: {
   applicationId: string
   bundle: RequirementsBundle
   disabled: boolean
+  guard: GuardedAction
 }) {
   // Mirrors the stored bundle so a fresh upload shows immediately, and is
   // re-synced during render whenever the record behind it moves on.
@@ -809,9 +837,24 @@ function BundleUploader({
       return
     }
 
+    const previousUrl = current.url
+    const ok = await guard.confirm({
+      title: previousUrl
+        ? "Replace the scanned folder?"
+        : "Attach the scanned folder?",
+      description: previousUrl
+        ? `${file.name} replaces ${current.name ?? "the current scan"}, which is deleted.`
+        : `${file.name} (${formatBytes(file.size)}) is uploaded as this application's scanned folder.`,
+      confirmLabel: previousUrl ? "Replace" : "Upload",
+    })
+    if (!ok) {
+      if (inputRef.current) inputRef.current.value = ""
+      return
+    }
+
+    guard.start("Uploading the scanned folder…")
     setBusy(true)
     setError(null)
-    const previousUrl = current.url
 
     try {
       const supabase = createClient()
@@ -863,6 +906,7 @@ function BundleUploader({
       setError((err as Error).message)
     } finally {
       setBusy(false)
+      guard.stop()
       if (inputRef.current) inputRef.current.value = ""
     }
   }
@@ -870,6 +914,15 @@ function BundleUploader({
   async function handleRemove() {
     if (!current.url) return
 
+    const ok = await guard.confirm({
+      title: "Remove the scanned folder?",
+      description: `${current.name ?? "The PDF"} is deleted and can't be recovered — it has to be scanned and uploaded again.`,
+      confirmLabel: "Remove",
+      destructive: true,
+    })
+    if (!ok) return
+
+    guard.start("Removing the scanned folder…")
     setBusy(true)
     setError(null)
 
@@ -892,6 +945,7 @@ function BundleUploader({
       setError((err as Error).message)
     } finally {
       setBusy(false)
+      guard.stop()
     }
   }
 
@@ -994,6 +1048,7 @@ function EditableRow({
   onFileUrl,
   onChange,
   disabled,
+  guard,
 }: {
   item: ApplicationRequirementWithDetail
   applicationId: string
@@ -1002,6 +1057,7 @@ function EditableRow({
   onFileUrl: (url: string | null) => void
   onChange: (patch: Partial<Draft>) => void
   disabled: boolean
+  guard: GuardedAction
 }) {
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -1034,9 +1090,22 @@ function EditableRow({
       return
     }
 
+    const previousUrl = fileUrl
+    const ok = await guard.confirm({
+      title: previousUrl ? "Replace the attachment?" : "Attach this file?",
+      description: previousUrl
+        ? `${file.name} replaces the file on "${item.label}", which is deleted.`
+        : `${file.name} is attached to "${item.label}".`,
+      confirmLabel: previousUrl ? "Replace" : "Upload",
+    })
+    if (!ok) {
+      if (fileInputRef.current) fileInputRef.current.value = ""
+      return
+    }
+
+    guard.start("Uploading the attachment…")
     setUploading(true)
     setError(null)
-    const previousUrl = fileUrl
 
     try {
       const supabase = createClient()
@@ -1085,6 +1154,7 @@ function EditableRow({
       setError((err as Error).message)
     } finally {
       setUploading(false)
+      guard.stop()
       if (fileInputRef.current) fileInputRef.current.value = ""
     }
   }
@@ -1092,6 +1162,15 @@ function EditableRow({
   async function handleRemoveFile() {
     if (!fileUrl) return
 
+    const ok = await guard.confirm({
+      title: "Remove the attachment?",
+      description: `The file on "${item.label}" is deleted and can't be recovered.`,
+      confirmLabel: "Remove",
+      destructive: true,
+    })
+    if (!ok) return
+
+    guard.start("Removing the attachment…")
     setUploading(true)
     setError(null)
 
@@ -1114,6 +1193,7 @@ function EditableRow({
       setError((err as Error).message)
     } finally {
       setUploading(false)
+      guard.stop()
     }
   }
 

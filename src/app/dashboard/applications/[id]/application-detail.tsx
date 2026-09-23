@@ -1,7 +1,6 @@
 "use client"
 
-import { useState, useEffect, useTransition } from "react"
-import { useRouter } from "next/navigation"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { PageHeader } from "@/components/layout/page-header"
 import {
@@ -17,7 +16,7 @@ import { StatusBadge } from "@/components/shared/status-badge"
 import { ApprovalStepper } from "@/components/shared/approval-stepper"
 import { TimelineLog } from "@/components/shared/timeline-log"
 import { HistoryTimeline } from "@/components/shared/history-timeline"
-import { BusyOverlay } from "@/components/shared/busy-overlay"
+import { useGuardedAction } from "@/components/shared/guarded-action"
 import { RequirementChecklist } from "@/components/mtop/requirement-checklist"
 import { FranchisePhotosCard } from "@/components/mtop/franchise-photos-card"
 import { TricycleDetailsCard } from "@/components/mtop/tricycle-details-card"
@@ -71,6 +70,41 @@ function busyLabelFor(
   return `Forwarding to ${stageName(status)}…`
 }
 
+/** What the clerk is asked before a decision is recorded. */
+function confirmFor(
+  status: MtopStatus,
+  action: "approved" | "rejected" | "returned" | "forwarded"
+) {
+  if (status === "granted")
+    return {
+      title: "Approve and grant the MTOP?",
+      description:
+        "Granting applies this transaction to the franchise. Once granted, the record is settled and can only be changed by filing another transaction.",
+      confirmLabel: "Approve & Grant",
+    }
+  if (action === "rejected")
+    return {
+      title: "Reject this application?",
+      description:
+        "A rejection is final — the application cannot be reopened, and the operator has to file again.",
+      confirmLabel: "Reject",
+      destructive: true,
+    }
+  if (action === "returned")
+    return {
+      title: "Return this application?",
+      description:
+        "It is paused with your remarks until the deficiency is settled. Nothing already cleared is undone.",
+      confirmLabel: "Return",
+      destructive: true,
+    }
+  return {
+    title: `Forward to ${stageName(status)}?`,
+    description: `The application moves on to ${stageName(status)}.`,
+    confirmLabel: "Forward",
+  }
+}
+
 export function ApplicationDetail({
   application,
   settings,
@@ -81,17 +115,11 @@ export function ApplicationDetail({
   settings: SystemSettings
   franchiseHistory: FranchiseHistoryEvent[]
 }) {
-  const router = useRouter()
   const { can } = usePermissions()
   const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
-  // router.refresh() re-renders on the server; a transition is what tells us
-  // when that has actually landed, so the overlay can stay up until the page
-  // in front of the clerk is the one the decision produced.
-  const [refreshing, startRefresh] = useTransition()
-  // What the overlay says. Held in state because by the time it is up, the
-  // status it belongs to may already have been written.
-  const [busyLabel, setBusyLabel] = useState<string | null>(null)
+  // Asks before each decision, then holds the overlay up until the page in
+  // front of the clerk is the one the decision produced.
+  const guard = useGuardedAction()
   const [remarks, setRemarks] = useState("")
   // Set when a return was attempted with the field empty, so the field itself
   // shows the problem rather than only the alert at the top of the page.
@@ -129,8 +157,9 @@ export function ApplicationDetail({
     }
 
     setRemarksMissing(false)
-    setLoading(true)
-    setBusyLabel(busyLabelFor(newStatus, action))
+    if (!(await guard.confirm(confirmFor(newStatus, action)))) return
+
+    guard.start(busyLabelFor(newStatus, action))
     setError(null)
 
     const result = await updateApplicationStatus(
@@ -142,13 +171,12 @@ export function ApplicationDetail({
 
     if (result.error) {
       setError(result.error)
-      setLoading(false)
-      setBusyLabel(null)
+      guard.stop()
       return
     }
 
     setRemarks("")
-    finishWithRefresh()
+    guard.finish()
   }
 
   // A returned application resumes at the stage it was returned from; the
@@ -156,33 +184,27 @@ export function ApplicationDetail({
   const reopenStage = reopenTargetStage(application.approval_logs ?? [])
 
   async function handleReopen() {
-    setLoading(true)
-    setBusyLabel("Reopening the application…")
+    const ok = await guard.confirm({
+      title: `Reopen at ${stageName(reopenStage)}?`,
+      description:
+        "The application resumes where it was returned from, with everything already cleared left as it is.",
+      confirmLabel: "Reopen",
+    })
+    if (!ok) return
+
+    guard.start("Reopening the application…")
     setError(null)
 
     const result = await reopenApplication(application.id, remarks || undefined)
 
     if (result.error) {
       setError(result.error)
-      setLoading(false)
-      setBusyLabel(null)
+      guard.stop()
       return
     }
 
     setRemarks("")
-    finishWithRefresh()
-  }
-
-  /**
-   * Hands the overlay over to the refresh. `loading` drops only once the
-   * transition owns the wait, so there is no frame in between where the page
-   * is live again but still showing the state the decision replaced.
-   */
-  function finishWithRefresh() {
-    startRefresh(() => {
-      router.refresh()
-    })
-    setLoading(false)
+    guard.finish()
   }
 
   // An administrator can correct any stage until the permit is granted. An
@@ -204,7 +226,7 @@ export function ApplicationDetail({
   // The overlay blocks the pointer; `inert` closes the keyboard route into the
   // page behind it, so a decision in flight cannot be raced by a tab and a
   // return key. Both end together when the refreshed page arrives.
-  const busy = loading || refreshing
+  const busy = guard.busy
 
   return (
     <div className="space-y-6" inert={busy || undefined}>
@@ -543,7 +565,7 @@ export function ApplicationDetail({
           <StageActions
             status={application.status}
             can={can}
-            loading={loading}
+            loading={busy}
             remarks={remarks}
             onRemarksChange={(value) => {
               setRemarks(value)
@@ -680,12 +702,7 @@ export function ApplicationDetail({
       </div>
 
       {/* Portalled out of this element, so `inert` above does not reach it. */}
-      {busy && (
-        <BusyOverlay
-          label={busyLabel ?? "Working…"}
-          detail="Please wait — this is being recorded."
-        />
-      )}
+      {guard.element}
     </div>
   )
 }

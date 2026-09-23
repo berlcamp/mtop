@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useMemo } from "react"
-import { useRouter } from "next/navigation"
+import { useGuardedAction } from "@/components/shared/guarded-action"
 import {
   Card,
   CardContent,
@@ -114,7 +114,7 @@ function AssessmentFormInner({
   onCancel?: () => void
   onSaved?: () => void
 }) {
-  const router = useRouter()
+  const guard = useGuardedAction()
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -168,6 +168,14 @@ function AssessmentFormInner({
   )
 
   async function handleSubmit() {
+    const ok = await guard.confirm({
+      title: previous ? "Submit the revised assessment?" : "Submit this assessment?",
+      description: `Total due: ₱${total.toLocaleString("en-PH", { minimumFractionDigits: 2 })}. It goes to the CTO head for approval before payment is taken.`,
+      confirmLabel: "Submit",
+    })
+    if (!ok) return
+
+    guard.start("Saving the assessment…")
     setSubmitting(true)
     setError(null)
 
@@ -195,12 +203,16 @@ function AssessmentFormInner({
     if (result.error) {
       setError(result.error)
       setSubmitting(false)
+      guard.stop()
       return
     }
 
-    router.refresh()
-    setSubmitting(false)
-    onSaved?.()
+    // Swapping back to the result unmounts this form, so wait for the
+    // refreshed figures before doing it.
+    guard.finish(() => {
+      setSubmitting(false)
+      onSaved?.()
+    })
   }
 
   const standardFeeKeys = Object.keys(STANDARD_FEES)
@@ -397,6 +409,7 @@ function AssessmentFormInner({
           )}
         </div>
       </CardContent>
+      {guard.element}
     </Card>
   )
 }
@@ -416,7 +429,7 @@ function AssessmentResult({
   /** Set only while the assessment is unapproved and this stage is open. */
   onRevise?: () => void
 }) {
-  const router = useRouter()
+  const guard = useGuardedAction()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -440,6 +453,14 @@ function AssessmentResult({
   ].filter(([, amount]) => Number(amount) > 0) as [string, number][]
 
   async function handleApprove() {
+    const ok = await guard.confirm({
+      title: "Approve this assessment?",
+      description: `₱${Number(assessment.total_amount).toLocaleString("en-PH", { minimumFractionDigits: 2 })} becomes the amount the operator is told to pay, and the cashier can take payment against it.`,
+      confirmLabel: "Approve",
+    })
+    if (!ok) return
+
+    guard.start("Approving the assessment…")
     setLoading(true)
     setError(null)
 
@@ -447,10 +468,11 @@ function AssessmentResult({
     if (result.error) {
       setError(result.error)
       setLoading(false)
+      guard.stop()
       return
     }
 
-    router.refresh()
+    guard.finish()
     setLoading(false)
   }
 
@@ -523,6 +545,7 @@ function AssessmentResult({
           </div>
         )}
       </CardContent>
+      {guard.element}
     </Card>
   )
 }

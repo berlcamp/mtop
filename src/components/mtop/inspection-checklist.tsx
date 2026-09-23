@@ -1,7 +1,7 @@
 "use client"
 
 import { useRef, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useGuardedAction } from "@/components/shared/guarded-action"
 import {
   Card,
   CardAction,
@@ -135,7 +135,7 @@ function InspectionResult({
   status: MtopStatus
   canRecord: boolean
 }) {
-  const router = useRouter()
+  const guard = useGuardedAction()
   const [loading, setLoading] = useState<"forward" | "return" | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -144,6 +144,14 @@ function InspectionResult({
   const atStage = status === "for_inspection" && canInspect
 
   async function handleForward() {
+    const ok = await guard.confirm({
+      title: "Forward to Assessment?",
+      description: "The unit passed inspection and moves on to fee assessment.",
+      confirmLabel: "Forward",
+    })
+    if (!ok) return
+
+    guard.start("Forwarding to Assessment…")
     setLoading("forward")
     setError(null)
 
@@ -157,14 +165,25 @@ function InspectionResult({
     if (result.error) {
       setError(result.error)
       setLoading(null)
+      guard.stop()
       return
     }
 
-    router.refresh()
+    guard.finish()
     setLoading(null)
   }
 
   async function handleFailReturn() {
+    const ok = await guard.confirm({
+      title: "Return to the operator?",
+      description:
+        "The application is paused until the failed points are repaired, then re-inspected.",
+      confirmLabel: "Return",
+      destructive: true,
+    })
+    if (!ok) return
+
+    guard.start("Returning the application…")
     setLoading("return")
     setError(null)
 
@@ -178,10 +197,11 @@ function InspectionResult({
     if (result.error) {
       setError(result.error)
       setLoading(null)
+      guard.stop()
       return
     }
 
-    router.refresh()
+    guard.finish()
     setLoading(null)
   }
 
@@ -295,6 +315,7 @@ function InspectionResult({
           </div>
         )}
       </CardContent>
+      {guard.element}
     </Card>
   )
 }
@@ -362,7 +383,7 @@ function InspectionDialog({
   previous: any | null
   trigger: React.ReactElement
 }) {
-  const router = useRouter()
+  const guard = useGuardedAction()
   const { profile } = useProfile()
 
   const [open, setOpen] = useState(false)
@@ -385,6 +406,9 @@ function InspectionDialog({
   })
 
   function handleOpenChange(next: boolean) {
+    // The overlay sits outside this dialog, so a click on it reads as a click
+    // outside — which must not close the form mid-save.
+    if (!next && guard.busy) return
     if (next) {
       // A re-inspection starts from what the last visit found, so the inspector
       // ticks off only what has since been put right. A first visit starts
@@ -407,6 +431,16 @@ function InspectionDialog({
   }
 
   async function handleSubmit() {
+    const ok = await guard.confirm({
+      title: previous ? "Record this re-inspection?" : "Record this inspection?",
+      description: allPassed
+        ? "The unit passes on every point."
+        : `The unit fails on ${INSPECTION_FIELDS.length - INSPECTION_FIELDS.filter((f) => verdicts[f] === true).length} point(s) and goes back to the operator for repair.`,
+      confirmLabel: "Record",
+    })
+    if (!ok) return
+
+    guard.start("Recording the inspection…")
     setSubmitting(true)
     setError(null)
 
@@ -420,10 +454,11 @@ function InspectionDialog({
     if (result.error) {
       setError(result.error)
       setSubmitting(false)
+      guard.stop()
       return
     }
 
-    router.refresh()
+    guard.finish()
     setSubmitting(false)
     setOpen(false)
   }
@@ -558,7 +593,9 @@ function InspectionDialog({
             </Button>
           </div>
         </DialogFooter>
+        {guard.confirmDialog}
       </DialogContent>
+      {guard.overlay}
     </Dialog>
   )
 }

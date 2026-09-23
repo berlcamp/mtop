@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { useRouter } from "next/navigation"
+import { useGuardedAction } from "@/components/shared/guarded-action"
 import {
   Card,
   CardContent,
@@ -50,7 +50,7 @@ export function TricycleDetailsCard({
   fiscalYear?: string
   canEdit: boolean
 }) {
-  const router = useRouter()
+  const guard = useGuardedAction()
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -84,6 +84,15 @@ export function TricycleDetailsCard({
   }
 
   async function handleSave() {
+    const ok = await guard.confirm({
+      title: "Save the corrected tricycle details?",
+      description:
+        "This overwrites the unit on record. The audit trail keeps the old values.",
+      confirmLabel: "Save Changes",
+    })
+    if (!ok) return
+
+    guard.start("Saving the tricycle details…")
     setSaving(true)
     setError(null)
 
@@ -99,12 +108,15 @@ export function TricycleDetailsCard({
     if (result.error) {
       setError(result.error)
       setSaving(false)
+      guard.stop()
       return
     }
 
-    router.refresh()
-    setSaving(false)
-    setEditing(false)
+    // Back to the record only once it shows the corrected values.
+    guard.finish(() => {
+      setSaving(false)
+      setEditing(false)
+    })
   }
 
   return (
@@ -268,6 +280,7 @@ export function TricycleDetailsCard({
           </dl>
         )}
       </CardContent>
+      {guard.element}
     </Card>
   )
 }

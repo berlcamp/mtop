@@ -268,7 +268,16 @@ export function CameraCaptureDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      // The page-wide overlay sits outside this dialog while the photo is
+      // saved, so a click on it reads as a click outside — which must not
+      // close the dialog and lose the error if the save fails.
+      onOpenChange={(next) => {
+        if (!next && saving) return
+        onOpenChange(next)
+      }}
+    >
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>

@@ -1,7 +1,6 @@
 "use client"
 
 import { useState } from "react"
-import { useRouter } from "next/navigation"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import {
@@ -17,6 +16,7 @@ import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Banknote, AlertCircle, Loader2 } from "lucide-react"
 import { useProfile } from "@/lib/hooks/use-profile"
+import { useGuardedAction } from "@/components/shared/guarded-action"
 import {
   paymentSchema,
   type PaymentFormInput,
@@ -106,7 +106,7 @@ function PaymentFormInner({
   onCancel?: () => void
   onSaved?: () => void
 }) {
-  const router = useRouter()
+  const guard = useGuardedAction()
   const { profile } = useProfile()
   const [serverError, setServerError] = useState<string | null>(null)
 
@@ -128,16 +128,26 @@ function PaymentFormInner({
   })
 
   async function onSubmit(data: PaymentFormValues) {
+    const ok = await guard.confirm({
+      title: "Record this payment?",
+      description: `₱${Number(data.amount_paid).toLocaleString("en-PH", { minimumFractionDigits: 2 })} under OR No. ${data.or_number}, and the application goes on to approval. A payment cannot be edited once recorded.`,
+      confirmLabel: "Record & Forward",
+    })
+    if (!ok) return
+
+    guard.start("Recording the payment…")
     setServerError(null)
 
     const result = await recordPayment(applicationId, assessmentId, data)
     if (result.error) {
       setServerError(result.error)
+      guard.stop()
       return
     }
 
-    router.refresh()
-    onSaved?.()
+    // Swapping back to the receipt unmounts this form, so wait for the
+    // refreshed payments before doing it.
+    guard.finish(() => onSaved?.())
   }
 
   return (
@@ -230,7 +240,7 @@ function PaymentFormInner({
 
           <div className="flex gap-2">
             <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting && (
+              {guard.busy && (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               )}
               Record Payment &amp; Forward to Approval
@@ -248,6 +258,7 @@ function PaymentFormInner({
           </div>
         </form>
       </CardContent>
+      {guard.element}
     </Card>
   )
 }

@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useGuardedAction } from "@/components/shared/guarded-action"
 import {
   Card,
   CardContent,
@@ -35,6 +35,8 @@ function storagePathFromPublicUrl(url: string): string | null {
 }
 
 type Slot = "owner" | "driver"
+
+const SLOT_NOUN: Record<Slot, string> = { owner: "owner's", driver: "driver's" }
 
 interface FranchisePhotosCardProps {
   franchiseId: string
@@ -75,7 +77,7 @@ export function FranchisePhotosCard({
   const [busySlot, setBusySlot] = useState<Slot | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const router = useRouter()
+  const guard = useGuardedAction()
 
   // What is on record, and what is being typed over it. Kept apart so the
   // read-only view can update the moment a save lands, rather than waiting on
@@ -115,8 +117,12 @@ export function FranchisePhotosCard({
 
   /** Uploads the capture, persists its URL, then drops the photo it replaced. */
   async function handleCapture(slot: Slot, blob: Blob): Promise<string | null> {
+    // No confirmation here: the camera dialog's Retake / Use Photo already is
+    // one, with the photo itself on screen.
+    guard.start(`Saving the ${SLOT_NOUN[slot]} photo…`)
     setBusySlot(slot)
     setError(null)
+    let saved = false
 
     try {
       const supabase = createClient()
@@ -147,17 +153,31 @@ export function FranchisePhotosCard({
       setPhotos((prev) => ({ ...prev, [slot]: publicUrl }))
       await removeStoredPhoto(previous)
 
+      saved = true
       return null
     } catch (e) {
       return (e as Error).message
     } finally {
       setBusySlot(null)
+      if (saved) guard.finish()
+      else guard.stop()
     }
   }
 
   async function handleRemove(slot: Slot) {
+    const ok = await guard.confirm({
+      title: `Remove the ${SLOT_NOUN[slot]} photo?`,
+      description:
+        "The Franchise Card prints without a portrait until a new one is captured.",
+      confirmLabel: "Remove",
+      destructive: true,
+    })
+    if (!ok) return
+
+    guard.start(`Removing the ${SLOT_NOUN[slot]} photo…`)
     setBusySlot(slot)
     setError(null)
+    let removed = false
 
     try {
       const result = await updateFranchisePhoto(
@@ -174,8 +194,11 @@ export function FranchisePhotosCard({
       const previous = photos[slot]
       setPhotos((prev) => ({ ...prev, [slot]: null }))
       await removeStoredPhoto(previous)
+      removed = true
     } finally {
       setBusySlot(null)
+      if (removed) guard.finish()
+      else guard.stop()
     }
   }
 
@@ -220,9 +243,18 @@ export function FranchisePhotosCard({
   }
 
   async function handleSaveDriver() {
+    const ok = await guard.confirm({
+      title: "Save the card details?",
+      description: "The driver and unit details on the Franchise Card are updated.",
+      confirmLabel: "Save Changes",
+    })
+    if (!ok) return
+
+    guard.start("Saving the card details…")
     if (await persistDriver(form)) {
-      setEditing(false)
-      router.refresh()
+      guard.finish(() => setEditing(false))
+    } else {
+      guard.stop()
     }
   }
 
@@ -378,6 +410,7 @@ export function FranchisePhotosCard({
           </dl>
         )}
       </CardContent>
+      {guard.element}
     </Card>
   )
 }
