@@ -63,3 +63,30 @@ export function reopenTargetStage(
     "for_verification"
   )
 }
+
+/**
+ * The decisions the office has to give a reason for, and the sentence it is
+ * told when it does not.
+ *
+ * A return and a rejection are both the office telling the operator that the
+ * application is not going through, and both are worth nothing without the
+ * why: a return is the list of what to come back with, and a rejection is the
+ * record of why the franchise was refused — the one thing an appeal, or the
+ * next clerk to open the file, has to go on. Forwarding and approving need no
+ * reason; the application itself is the reason.
+ *
+ * Lives here, in a plain module, so the form and the server action say the same
+ * thing. The action file cannot export a shared constant of its own — every
+ * export from a "use server" module has to be an async function.
+ */
+export function remarksRequiredMessage(
+  action: "approved" | "rejected" | "returned" | "forwarded"
+): string | null {
+  if (action === "returned") {
+    return "Remarks are required when returning an application — say what needs to be corrected."
+  }
+  if (action === "rejected") {
+    return "Remarks are required when rejecting an application — say why it is being refused."
+  }
+  return null
+}

@@ -47,6 +47,7 @@ import { isBlocking } from "@/lib/requirements"
 import { InfoItem } from "@/components/shared/info-item"
 import {
   reopenTargetStage,
+  remarksRequiredMessage,
   stageName,
   stagePermission,
 } from "@/lib/application-flow"
@@ -121,9 +122,12 @@ export function ApplicationDetail({
   // front of the clerk is the one the decision produced.
   const guard = useGuardedAction()
   const [remarks, setRemarks] = useState("")
-  // Set when a return was attempted with the field empty, so the field itself
-  // shows the problem rather than only the alert at the top of the page.
-  const [remarksMissing, setRemarksMissing] = useState(false)
+  // Set to the decision that was attempted with the field empty, so the field
+  // itself shows the problem — and names it — rather than leaving the alert at
+  // the top of the page to do all the work.
+  const [remarksMissing, setRemarksMissing] = useState<
+    "returned" | "rejected" | null
+  >(null)
   const [negativeListMatches, setNegativeListMatches] = useState<
     { id: string; applicant_name: string; reason: string }[]
   >([])
@@ -148,15 +152,16 @@ export function ApplicationDetail({
     newStatus: MtopStatus,
     action: "approved" | "rejected" | "returned" | "forwarded"
   ) {
-    if (action === "returned" && !remarks.trim()) {
-      setRemarksMissing(true)
-      setError(
-        "Remarks are required when returning an application — say what needs to be corrected."
-      )
+    // Same rule the server enforces, read from the same place, so the form
+    // cannot drift from what updateApplicationStatus() will accept.
+    const remarksRequired = remarksRequiredMessage(action)
+    if (remarksRequired && !remarks.trim()) {
+      setRemarksMissing(action as "returned" | "rejected")
+      setError(remarksRequired)
       return
     }
 
-    setRemarksMissing(false)
+    setRemarksMissing(null)
     if (!(await guard.confirm(confirmFor(newStatus, action)))) return
 
     guard.start(busyLabelFor(newStatus, action))
@@ -569,7 +574,7 @@ export function ApplicationDetail({
             remarks={remarks}
             onRemarksChange={(value) => {
               setRemarks(value)
-              if (remarksMissing && value.trim()) setRemarksMissing(false)
+              if (remarksMissing && value.trim()) setRemarksMissing(null)
             }}
             remarksMissing={remarksMissing}
             onAction={handleStatusChange}
@@ -830,7 +835,7 @@ function StageActions({
   loading: boolean
   remarks: string
   onRemarksChange: (v: string) => void
-  remarksMissing: boolean
+  remarksMissing: "returned" | "rejected" | null
   onAction: (
     status: MtopStatus,
     action: "approved" | "rejected" | "returned" | "forwarded"
@@ -958,6 +963,16 @@ function StageActions({
     )
   }
 
+  // Rejecting is only ever offered at approval, and it is the one decision that
+  // ends the application — so the remarks box has to say it needs a reason for
+  // that too, not only for a return.
+  const canReject = status === "for_approval" && can("application.approve")
+
+  const requiredFor = [
+    canReturn ? "returning" : null,
+    canReject ? "rejecting" : null,
+  ].filter(Boolean) as string[]
+
   return (
     <Card>
       <CardHeader>
@@ -971,20 +986,20 @@ function StageActions({
         {/* Remarks */}
         <div className="space-y-2">
           <label className="text-sm font-medium" htmlFor="remarks">
-            {isReopen ? (
+            {isReopen || requiredFor.length === 0 ? (
               "Remarks (optional)"
             ) : (
               <>
                 Remarks{" "}
                 <span className="text-muted-foreground font-normal">
-                  — required when returning
+                  — required when {requiredFor.join(" or ")}
                 </span>
               </>
             )}
           </label>
           <textarea
             id="remarks"
-            aria-invalid={remarksMissing}
+            aria-invalid={remarksMissing !== null}
             className={cn(
               "flex w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 min-h-[80px]",
               remarksMissing &&
@@ -993,15 +1008,23 @@ function StageActions({
             placeholder={
               isReopen
                 ? "Add remarks..."
-                : "What does the applicant need to correct?"
+                : canReject
+                  ? "Why is this being returned or refused?"
+                  : "What does the applicant need to correct?"
             }
             value={remarks}
             onChange={(e) => onRemarksChange(e.target.value)}
           />
-          {remarksMissing && (
+          {remarksMissing === "returned" && (
             <p className="text-xs text-destructive">
               Say what needs to be corrected — the applicant sees this as the
               reason the application came back.
+            </p>
+          )}
+          {remarksMissing === "rejected" && (
+            <p className="text-xs text-destructive">
+              Say why the application is being refused — a rejection is final,
+              and this is the only record of the reason.
             </p>
           )}
         </div>
@@ -1049,7 +1072,7 @@ function StageActions({
             </Button>
           )}
 
-          {status === "for_approval" && can("application.approve") && (
+          {canReject && (
             <Button
               variant="destructive"
               onClick={() => onAction("rejected", "rejected")}

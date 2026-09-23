@@ -18,7 +18,7 @@ import {
   type UnitIdentifierConflict,
   type UnitIdentifierField,
 } from "@/lib/unit-identifier"
-import { reopenTargetStage } from "@/lib/application-flow"
+import { reopenTargetStage, remarksRequiredMessage } from "@/lib/application-flow"
 import { composeAddress } from "@/lib/address"
 import { hasPermission } from "@/lib/permissions"
 import type {
@@ -898,15 +898,14 @@ export async function updateApplicationStatus(
   try {
     const { supabase, user } = await getAuthUser()
 
-    // A return is the office telling the operator what to come back with, so
-    // it is worth nothing without the reason. The form checks this too, for
-    // an immediate answer; enforcing it here is what makes it a rule rather
-    // than a suggestion, for this and any future caller.
-    if (action === "returned" && !remarks?.trim()) {
-      return {
-        error:
-          "Remarks are required when returning an application — say what needs to be corrected.",
-      }
+    // A return is the office telling the operator what to come back with, and a
+    // rejection is the record of why the franchise was refused. Neither is worth
+    // anything without the reason. The form checks this too, for an immediate
+    // answer; enforcing it here is what makes it a rule rather than a
+    // suggestion, for this and any future caller.
+    const remarksRequired = remarksRequiredMessage(action)
+    if (remarksRequired && !remarks?.trim()) {
+      return { error: remarksRequired }
     }
 
     const updateData: Record<string, unknown> = { status }
