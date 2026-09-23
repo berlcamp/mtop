@@ -66,3 +66,25 @@ export function officeDateParts(
 export function officeYear(value: string | null | undefined): number | null {
   return officeDateParts(value)?.year ?? null
 }
+
+/**
+ * A stored timestamp as a short readable day in Ozamiz — "Sep 23, 2026".
+ *
+ * Formatting through Intl with an explicit zone rather than the runtime's own
+ * means the server and the browser produce the same string: the server runs in
+ * UTC, so `toLocaleDateString()` alone renders one day on the server and
+ * another in the office, which React reports as a hydration mismatch.
+ */
+export function officeDateLabel(
+  value: string | null | undefined
+): string | null {
+  const parts = officeDateParts(value)
+  if (!parts) return null
+
+  return new Intl.DateTimeFormat("en-PH", {
+    timeZone: "UTC",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(Date.UTC(parts.year, parts.month - 1, parts.day))
+}

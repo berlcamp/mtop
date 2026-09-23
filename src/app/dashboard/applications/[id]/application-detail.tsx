@@ -474,6 +474,14 @@ export function ApplicationDetail({
             requirements={requirements}
             applicationId={application.id}
             transactionName={transactionType?.name}
+            // One scanned PDF standing in for the whole folder, which is how
+            // the counter actually receives the documents.
+            bundle={{
+              url: application.requirements_file_url ?? null,
+              name: application.requirements_file_name ?? null,
+              size: application.requirements_file_size ?? null,
+              uploadedAt: application.requirements_uploaded_at ?? null,
+            }}
             canVerify={
               (can("application.verify") &&
                 application.status !== "granted" &&

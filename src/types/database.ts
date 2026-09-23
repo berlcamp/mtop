@@ -144,6 +144,15 @@ export interface MtopApplication {
   new_purok: string | null
   new_applicant_address: string | null
   new_contact_number: string | null
+  // One scanned PDF of the whole requirements folder — see
+  // 20260413000027_requirements_bundle.sql. The per-row file_url on
+  // mtop_application_requirements is still there for the document that turns
+  // up on its own after the folder was scanned.
+  requirements_file_url: string | null
+  requirements_file_name: string | null
+  requirements_file_size: number | null
+  requirements_uploaded_at: string | null
+  requirements_uploaded_by: string | null
 }
 
 export interface FranchiseUnitHistory {
