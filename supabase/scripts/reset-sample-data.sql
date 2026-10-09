@@ -32,7 +32,7 @@ TRUNCATE TABLE mtop.mtop_franchises CASCADE;
 TRUNCATE TABLE mtop.audit_logs;
 
 -- Restarts MTOP numbering from 1 for every year, so the next grant issues
--- AO-<year>-00001 again instead of continuing where the sample data left off.
+-- AO-SNGF-<year>-0001 again instead of continuing where the sample data left off.
 -- Comment this line out if you'd rather keep counting up.
 TRUNCATE TABLE mtop.mtop_number_counters;
 
