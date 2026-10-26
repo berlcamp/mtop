@@ -10,6 +10,7 @@ import {
 } from "@/lib/utils/permit-expiration"
 import type { PermitExpirationStatus } from "@/lib/utils/permit-expiration"
 import type { FranchiseStatus, MtopStatus } from "@/types/database"
+import { franchisePhotoColumn, isFranchisePhotoUrl } from "@/lib/franchise-photo"
 
 async function getAuthUser() {
   const supabase = await createClient()
@@ -335,7 +336,7 @@ async function assertAdminCanEditUnit(
 export async function updateFranchisePhoto(
   franchiseId: string,
   applicationId: string,
-  slot: "owner" | "driver",
+  slot: "owner" | "driver" | "unit",
   url: string | null
 ) {
   try {
@@ -349,7 +350,11 @@ export async function updateFranchisePhoto(
     )
     if (denied) return { error: denied }
 
-    const column = slot === "owner" ? "owner_photo_url" : "driver_photo_url"
+    const column = franchisePhotoColumn(slot)
+    if (!column) return { error: "Invalid franchise photo slot." }
+    if (url !== null && !isFranchisePhotoUrl(
+      url, process.env.NEXT_PUBLIC_SUPABASE_URL, franchiseId, slot
+    )) return { error: "The photo URL does not belong to this franchise and slot." }
 
     const { error } = await supabase
       .schema("mtop")

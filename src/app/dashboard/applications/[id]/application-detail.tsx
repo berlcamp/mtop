@@ -557,6 +557,7 @@ export function ApplicationDetail({
               applicationId={application.id}
               ownerPhotoUrl={franchise.owner_photo_url ?? null}
               driverPhotoUrl={franchise.driver_photo_url ?? null}
+              unitPhotoUrl={franchise.unit_photo_url ?? null}
               driverName={franchise.driver_name ?? null}
               driverLicenseNumber={franchise.driver_license_number ?? null}
               driverAddress={franchise.driver_address ?? null}

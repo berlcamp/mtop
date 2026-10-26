@@ -21,6 +21,7 @@ import {
 import {
   Camera,
   CameraOff,
+  CarFront,
   ImageUp,
   Loader2,
   RefreshCw,
@@ -33,6 +34,11 @@ const PHOTO_WIDTH = 600
 const PHOTO_HEIGHT = 800
 const PHOTO_ASPECT = PHOTO_WIDTH / PHOTO_HEIGHT
 const JPEG_QUALITY = 0.85
+const UNIT_WIDTH = 1200
+const UNIT_HEIGHT = 900
+const UNIT_ASPECT = UNIT_WIDTH / UNIT_HEIGHT
+
+type PhotoMode = "portrait" | "landscape"
 
 /**
  * Draws a center-cropped 3:4 portrait of `source` onto a 600x800 canvas and
@@ -75,6 +81,38 @@ function normalizeToPortraitJpeg(
   })
 }
 
+function normalizeToLandscapeJpeg(
+  source: HTMLVideoElement | HTMLImageElement,
+  sourceWidth: number,
+  sourceHeight: number
+): Promise<Blob> {
+  const canvas = document.createElement("canvas")
+  canvas.width = UNIT_WIDTH
+  canvas.height = UNIT_HEIGHT
+  const ctx = canvas.getContext("2d")
+  if (!ctx) return Promise.reject(new Error("Canvas is not available."))
+
+  let sw = sourceWidth
+  let sh = sourceHeight
+  if (sourceWidth / sourceHeight > UNIT_ASPECT) sw = sourceHeight * UNIT_ASPECT
+  else sh = sourceWidth / UNIT_ASPECT
+  ctx.drawImage(source, (sourceWidth - sw) / 2, (sourceHeight - sh) / 2, sw, sh, 0, 0, UNIT_WIDTH, UNIT_HEIGHT)
+
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => blob ? resolve(blob) : reject(new Error("Failed to encode the photo.")),
+      "image/jpeg",
+      JPEG_QUALITY
+    )
+  })
+}
+
+function normalizePhoto(mode: PhotoMode, source: HTMLVideoElement | HTMLImageElement, width: number, height: number) {
+  return mode === "landscape"
+    ? normalizeToLandscapeJpeg(source, width, height)
+    : normalizeToPortraitJpeg(source, width, height)
+}
+
 function describeCameraError(err: unknown): string {
   const name = (err as { name?: string })?.name
   if (name === "NotAllowedError" || name === "SecurityError") {
@@ -93,6 +131,7 @@ interface CameraCaptureDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   title: string
+  mode?: PhotoMode
   /** Receives the normalized JPEG. Return an error message to keep the dialog open. */
   onCapture: (blob: Blob) => Promise<string | null> | string | null | void
 }
@@ -101,6 +140,7 @@ export function CameraCaptureDialog({
   open,
   onOpenChange,
   title,
+  mode = "portrait",
   onCapture,
 }: CameraCaptureDialogProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -145,7 +185,9 @@ export function CameraCaptureDialog({
         const stream = await navigator.mediaDevices.getUserMedia({
           video: deviceId
             ? { deviceId: { exact: deviceId } }
-            : { width: { ideal: 1280 }, height: { ideal: 960 } },
+            : mode === "landscape"
+              ? { width: { ideal: 1280 }, height: { ideal: 960 }, aspectRatio: { ideal: 4 / 3 } }
+              : { width: { ideal: 1280 }, height: { ideal: 960 } },
           audio: false,
         })
 
@@ -175,7 +217,7 @@ export function CameraCaptureDialog({
     return () => {
       cancelled = true
     }
-  }, [open, still, deviceId, stopStream])
+  }, [open, still, deviceId, mode, stopStream])
 
   // Release the camera as soon as the dialog closes, and reset for next time.
   useEffect(() => {
@@ -198,7 +240,8 @@ export function CameraCaptureDialog({
 
     setSaveError(null)
     try {
-      const blob = await normalizeToPortraitJpeg(
+      const blob = await normalizePhoto(
+        mode,
         video,
         video.videoWidth,
         video.videoHeight
@@ -234,7 +277,8 @@ export function CameraCaptureDialog({
         el.src = objectUrl
       })
 
-      const blob = await normalizeToPortraitJpeg(
+      const blob = await normalizePhoto(
+        mode,
         img,
         img.naturalWidth,
         img.naturalHeight
@@ -282,13 +326,14 @@ export function CameraCaptureDialog({
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>
-            Position the face inside the guide, then capture. The photo is saved
-            as a portrait ID shot.
+            {mode === "landscape"
+              ? "Fit the entire unit inside the horizontal guide, then capture. The photo is saved as a landscape image."
+              : "Position the face inside the guide, then capture. The photo is saved as a portrait ID shot."}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3">
-          <div className="relative mx-auto aspect-[3/4] w-56 overflow-hidden rounded-md border bg-muted">
+          <div className={`relative mx-auto ${mode === "landscape" ? "aspect-[4/3] w-full max-w-sm" : "aspect-[3/4] w-56"} overflow-hidden rounded-md border bg-muted`}>
             {still ? (
               // Object URL of a just-captured blob — next/image can't optimize it.
               // eslint-disable-next-line @next/next/no-img-element
@@ -313,7 +358,11 @@ export function CameraCaptureDialog({
                 />
                 {/* Framing guide */}
                 <div className="pointer-events-none absolute inset-0">
-                  <div className="absolute inset-x-[15%] inset-y-[10%] rounded-full border-2 border-dashed border-white/60" />
+                  {mode === "portrait" ? (
+                    <div className="absolute inset-x-[15%] inset-y-[10%] rounded-full border-2 border-dashed border-white/60" />
+                  ) : (
+                    <div className="absolute inset-x-[8%] inset-y-[12%] rounded-md border-2 border-dashed border-white/60" />
+                  )}
                 </div>
                 {starting && (
                   <div className="absolute inset-0 flex items-center justify-center bg-muted/70">
@@ -412,6 +461,7 @@ interface PhotoSlotProps {
   busy?: boolean
   onCapture: (blob: Blob) => Promise<string | null> | string | null | void
   onRemove: () => void
+  mode?: PhotoMode
 }
 
 export function PhotoSlot({
@@ -421,6 +471,7 @@ export function PhotoSlot({
   busy,
   onCapture,
   onRemove,
+  mode = "portrait",
 }: PhotoSlotProps) {
   const [dialogOpen, setDialogOpen] = useState(false)
 
@@ -428,7 +479,7 @@ export function PhotoSlot({
     <div className="space-y-2">
       <Label className="text-xs text-muted-foreground">{label}</Label>
 
-      <div className="relative aspect-[3/4] w-32 overflow-hidden rounded-md border bg-muted">
+      <div className={`relative ${mode === "landscape" ? "aspect-[4/3]" : "aspect-[3/4]"} w-full max-w-64 overflow-hidden rounded-md border bg-muted`}>
         {photoUrl ? (
           // Supabase storage host isn't in next.config remotePatterns; a plain
           // img keeps this component free of image config.
@@ -440,7 +491,7 @@ export function PhotoSlot({
           />
         ) : (
           <div className="flex h-full items-center justify-center">
-            <User className="h-8 w-8 text-muted-foreground/50" />
+            {mode === "landscape" ? <CarFront className="h-8 w-8 text-muted-foreground/50" /> : <User className="h-8 w-8 text-muted-foreground/50" />}
           </div>
         )}
         {busy && (
@@ -481,6 +532,7 @@ export function PhotoSlot({
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         title={`Capture ${label}`}
+        mode={mode}
         onCapture={onCapture}
       />
     </div>

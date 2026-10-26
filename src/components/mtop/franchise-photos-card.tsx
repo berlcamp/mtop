@@ -27,22 +27,31 @@ const BUCKET = "mtop-documents"
  * Turns a public storage URL back into its object path so an old portrait can
  * be removed once its replacement is saved.
  */
-function storagePathFromPublicUrl(url: string): string | null {
+function storagePathFromPublicUrl(url: string, franchiseId: string): string | null {
   const marker = `/${BUCKET}/`
   const index = url.indexOf(marker)
   if (index === -1) return null
-  return decodeURIComponent(url.slice(index + marker.length).split("?")[0])
+  let path: string
+  try {
+    path = decodeURIComponent(url.slice(index + marker.length).split("?")[0])
+  } catch {
+    return null
+  }
+  return new RegExp(`^photos/${franchiseId}/mtop_(owner|driver|unit)_.+\\.jpg$`, "i").test(path)
+    ? path
+    : null
 }
 
-type Slot = "owner" | "driver"
+type Slot = "owner" | "driver" | "unit"
 
-const SLOT_NOUN: Record<Slot, string> = { owner: "owner's", driver: "driver's" }
+const SLOT_NOUN: Record<Slot, string> = { owner: "owner's", driver: "driver's", unit: "unit" }
 
 interface FranchisePhotosCardProps {
   franchiseId: string
   applicationId: string
   ownerPhotoUrl: string | null
   driverPhotoUrl: string | null
+  unitPhotoUrl: string | null
   driverName: string | null
   driverLicenseNumber: string | null
   driverAddress: string | null
@@ -62,6 +71,7 @@ export function FranchisePhotosCard({
   applicationId,
   ownerPhotoUrl,
   driverPhotoUrl,
+  unitPhotoUrl,
   driverName,
   driverLicenseNumber,
   driverAddress,
@@ -73,6 +83,7 @@ export function FranchisePhotosCard({
   const [photos, setPhotos] = useState<Record<Slot, string | null>>({
     owner: ownerPhotoUrl,
     driver: driverPhotoUrl,
+    unit: unitPhotoUrl,
   })
   const [busySlot, setBusySlot] = useState<Slot | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -109,7 +120,7 @@ export function FranchisePhotosCard({
 
   async function removeStoredPhoto(url: string | null) {
     if (!url) return
-    const path = storagePathFromPublicUrl(url)
+    const path = storagePathFromPublicUrl(url, franchiseId)
     if (!path) return
     // Best-effort — an orphaned object is not worth failing the save over.
     await createClient().storage.from(BUCKET).remove([path])
@@ -126,7 +137,7 @@ export function FranchisePhotosCard({
 
     try {
       const supabase = createClient()
-      const path = `photos/${franchiseId}/mtop_${slot}_${Date.now()}.jpg`
+      const path = `photos/${franchiseId}/mtop_${slot}_${crypto.randomUUID()}.jpg`
 
       const { error: uploadErr } = await supabase.storage
         .from(BUCKET)
@@ -271,8 +282,7 @@ export function FranchisePhotosCard({
               )}
             </CardTitle>
             <CardDescription>
-              Portraits and driver information used to generate the Franchise
-              Card.
+              Franchise Owner, Driver, and Unit photos. Driver information is used to generate the Franchise Card.
             </CardDescription>
           </div>
           {canEdit && !showForm && (
@@ -291,7 +301,7 @@ export function FranchisePhotosCard({
       <CardContent className="space-y-6">
         {error && <p className="text-sm text-destructive">{error}</p>}
 
-        <div className="flex flex-wrap gap-8">
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
           <PhotoSlot
             label="Franchise Owner"
             photoUrl={photos.owner}
@@ -307,6 +317,15 @@ export function FranchisePhotosCard({
             busy={busySlot === "driver"}
             onCapture={(blob) => handleCapture("driver", blob)}
             onRemove={() => handleRemove("driver")}
+          />
+          <PhotoSlot
+            label="Unit"
+            photoUrl={photos.unit}
+            canEdit={canEdit}
+            busy={busySlot === "unit"}
+            mode="landscape"
+            onCapture={(blob) => handleCapture("unit", blob)}
+            onRemove={() => handleRemove("unit")}
           />
         </div>
 
