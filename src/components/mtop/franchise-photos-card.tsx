@@ -323,7 +323,7 @@ export function FranchisePhotosCard({
             photoUrl={photos.unit}
             canEdit={canEdit}
             busy={busySlot === "unit"}
-            mode="landscape"
+            mode="vehicle"
             onCapture={(blob) => handleCapture("unit", blob)}
             onRemove={() => handleRemove("unit")}
           />

@@ -28,17 +28,15 @@ import {
   Trash2,
   User,
 } from "lucide-react"
+import { isCameraPreviewReady } from "@/lib/camera-preview"
 
 // Portrait ID proportions — the Franchise Card expects 3:4.
 const PHOTO_WIDTH = 600
 const PHOTO_HEIGHT = 800
 const PHOTO_ASPECT = PHOTO_WIDTH / PHOTO_HEIGHT
 const JPEG_QUALITY = 0.85
-const UNIT_WIDTH = 1200
-const UNIT_HEIGHT = 900
-const UNIT_ASPECT = UNIT_WIDTH / UNIT_HEIGHT
 
-type PhotoMode = "portrait" | "landscape"
+type PhotoMode = "portrait" | "vehicle"
 
 /**
  * Draws a center-cropped 3:4 portrait of `source` onto a 600x800 canvas and
@@ -81,22 +79,31 @@ function normalizeToPortraitJpeg(
   })
 }
 
-function normalizeToLandscapeJpeg(
+function normalizeVehicleToPortraitJpeg(
   source: HTMLVideoElement | HTMLImageElement,
   sourceWidth: number,
   sourceHeight: number
 ): Promise<Blob> {
   const canvas = document.createElement("canvas")
-  canvas.width = UNIT_WIDTH
-  canvas.height = UNIT_HEIGHT
+  canvas.width = PHOTO_WIDTH
+  canvas.height = PHOTO_HEIGHT
   const ctx = canvas.getContext("2d")
   if (!ctx) return Promise.reject(new Error("Canvas is not available."))
 
-  let sw = sourceWidth
-  let sh = sourceHeight
-  if (sourceWidth / sourceHeight > UNIT_ASPECT) sw = sourceHeight * UNIT_ASPECT
-  else sh = sourceWidth / UNIT_ASPECT
-  ctx.drawImage(source, (sourceWidth - sw) / 2, (sourceHeight - sh) / 2, sw, sh, 0, 0, UNIT_WIDTH, UNIT_HEIGHT)
+  // Keep the complete vehicle visible inside the 3:4 portrait output. Neutral
+  // padding is preferable to cropping the front or rear off a landscape unit.
+  ctx.fillStyle = "#f4f4f5"
+  ctx.fillRect(0, 0, PHOTO_WIDTH, PHOTO_HEIGHT)
+  const scale = Math.min(PHOTO_WIDTH / sourceWidth, PHOTO_HEIGHT / sourceHeight)
+  const drawWidth = sourceWidth * scale
+  const drawHeight = sourceHeight * scale
+  ctx.drawImage(
+    source,
+    (PHOTO_WIDTH - drawWidth) / 2,
+    (PHOTO_HEIGHT - drawHeight) / 2,
+    drawWidth,
+    drawHeight
+  )
 
   return new Promise((resolve, reject) => {
     canvas.toBlob(
@@ -108,8 +115,8 @@ function normalizeToLandscapeJpeg(
 }
 
 function normalizePhoto(mode: PhotoMode, source: HTMLVideoElement | HTMLImageElement, width: number, height: number) {
-  return mode === "landscape"
-    ? normalizeToLandscapeJpeg(source, width, height)
+  return mode === "vehicle"
+    ? normalizeVehicleToPortraitJpeg(source, width, height)
     : normalizeToPortraitJpeg(source, width, height)
 }
 
@@ -125,6 +132,11 @@ function describeCameraError(err: unknown): string {
     return "The webcam is already in use by another application. Close it and try again, or upload a photo file instead."
   }
   return (err as Error)?.message ?? "The camera could not be started."
+}
+
+function cameraLabel(label: string, index: number): string {
+  const readable = label.trim() || `Camera ${index + 1}`
+  return readable.length > 48 ? `${readable.slice(0, 45)}…` : readable
 }
 
 interface CameraCaptureDialogProps {
@@ -144,7 +156,11 @@ export function CameraCaptureDialog({
   onCapture,
 }: CameraCaptureDialogProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
+  const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null)
+  const [cameraReady, setCameraReady] = useState(false)
+  const cameraGenerationRef = useRef(0)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([])
@@ -160,7 +176,14 @@ export function CameraCaptureDialog({
   const stopStream = useCallback(() => {
     streamRef.current?.getTracks().forEach((track) => track.stop())
     streamRef.current = null
+    setCameraStream(null)
+    setCameraReady(false)
     if (videoRef.current) videoRef.current.srcObject = null
+  }, [])
+
+  const attachVideo = useCallback((node: HTMLVideoElement | null) => {
+    videoRef.current = node
+    setVideoElement(node)
   }, [])
 
   // Start (or restart, when the selected camera changes) the live preview.
@@ -168,14 +191,18 @@ export function CameraCaptureDialog({
     if (!open || still) return
 
     let cancelled = false
+    const generation = ++cameraGenerationRef.current
+    setStarting(true)
+    setCameraReady(false)
+    setCameraError(null)
+    stopStream()
 
     async function start() {
-      setStarting(true)
-      setCameraError(null)
-
       if (!navigator.mediaDevices?.getUserMedia) {
         setCameraError(
-          "This browser cannot access a camera on an insecure connection. Use https:// or localhost, or upload a photo file instead."
+          window.isSecureContext
+            ? "This browser does not support camera access. Upload a photo file instead."
+            : "Camera access requires a secure browser context. Use https:// or localhost, or upload a photo file instead."
         )
         setStarting(false)
         return
@@ -185,30 +212,29 @@ export function CameraCaptureDialog({
         const stream = await navigator.mediaDevices.getUserMedia({
           video: deviceId
             ? { deviceId: { exact: deviceId } }
-            : mode === "landscape"
-              ? { width: { ideal: 1280 }, height: { ideal: 960 }, aspectRatio: { ideal: 4 / 3 } }
-              : { width: { ideal: 1280 }, height: { ideal: 960 } },
+            : { width: { ideal: 1280 }, height: { ideal: 960 } },
           audio: false,
         })
 
-        if (cancelled) {
+        if (cancelled || cameraGenerationRef.current !== generation) {
           stream.getTracks().forEach((track) => track.stop())
           return
         }
 
-        stopStream()
         streamRef.current = stream
-        if (videoRef.current) videoRef.current.srcObject = stream
+        setCameraStream(stream)
 
         // Device labels are only populated once permission has been granted.
         const all = await navigator.mediaDevices.enumerateDevices()
-        if (!cancelled) {
+        if (!cancelled && cameraGenerationRef.current === generation) {
           setDevices(all.filter((d) => d.kind === "videoinput"))
         }
       } catch (err) {
-        if (!cancelled) setCameraError(describeCameraError(err))
+        if (!cancelled && cameraGenerationRef.current === generation) {
+          setCameraError(describeCameraError(err))
+        }
       } finally {
-        if (!cancelled) setStarting(false)
+        if (!cancelled && cameraGenerationRef.current === generation) setStarting(false)
       }
     }
 
@@ -216,8 +242,109 @@ export function CameraCaptureDialog({
 
     return () => {
       cancelled = true
+      cameraGenerationRef.current = generation + 1
+      const stream = streamRef.current
+      stream?.getTracks().forEach((track) => track.stop())
+      if (streamRef.current === stream) streamRef.current = null
+      setCameraStream((current) => current === stream ? null : current)
+      if (videoRef.current?.srcObject === stream) videoRef.current.srcObject = null
+      setCameraReady(false)
     }
-  }, [open, still, deviceId, mode, stopStream])
+  }, [open, still, deviceId, stopStream])
+
+  // Dialog content is portaled, so attach only after React has mounted the
+  // actual video element. Acquisition and playback have separate lifecycles.
+  useEffect(() => {
+    const video = videoElement
+    const stream = cameraStream
+    if (!video || !stream || !open || still) return
+
+    let active = true
+    let playbackStarted = false
+    let frameReceived = false
+    let frameCallbackId: number | undefined
+    const playingHandler = () => {
+      playbackStarted = true
+      updateReady()
+    }
+
+    function updateReady() {
+      if (!active || !video) return
+      setCameraReady(isCameraPreviewReady(video, stream, playbackStarted, frameReceived))
+    }
+    function onFrame() {
+      if (!active) return
+      frameReceived = true
+      updateReady()
+    }
+    function onTrackEnded() {
+      if (!active) return
+      setCameraReady(false)
+      setCameraError("The camera stream stopped. Restart the dialog or upload a photo file instead.")
+      setStarting(false)
+    }
+    function onTrackMute() {
+      if (active) setCameraReady(false)
+    }
+    function onTrackUnmute() {
+      if (active) updateReady()
+    }
+    function onPlaybackError() {
+      if (!active) return
+      setCameraReady(false)
+      setCameraError("The camera preview could not play. Check browser camera access and try again, or upload a photo file instead.")
+      setStarting(false)
+    }
+
+    video.autoplay = true
+    video.muted = true
+    video.playsInline = true
+    video.srcObject = stream
+    video.addEventListener("loadedmetadata", updateReady)
+    video.addEventListener("canplay", onFrame)
+    video.addEventListener("playing", playingHandler)
+    video.addEventListener("error", onPlaybackError)
+    const tracks = stream.getVideoTracks()
+    tracks.forEach((track) => {
+      track.addEventListener("ended", onTrackEnded)
+      track.addEventListener("mute", onTrackMute)
+      track.addEventListener("unmute", onTrackUnmute)
+    })
+
+    if (typeof video.requestVideoFrameCallback === "function") {
+      const requestFrame = () => {
+        if (!active) return
+        frameCallbackId = video.requestVideoFrameCallback(() => {
+          onFrame()
+          if (!frameReceived) requestFrame()
+        })
+      }
+      requestFrame()
+    }
+
+    video.play().then(() => {
+      if (!active) return
+      playbackStarted = true
+      updateReady()
+    }).catch(onPlaybackError)
+
+    return () => {
+      active = false
+      video.removeEventListener("loadedmetadata", updateReady)
+      video.removeEventListener("canplay", onFrame)
+      video.removeEventListener("playing", playingHandler)
+      video.removeEventListener("error", onPlaybackError)
+      tracks.forEach((track) => {
+        track.removeEventListener("ended", onTrackEnded)
+        track.removeEventListener("mute", onTrackMute)
+        track.removeEventListener("unmute", onTrackUnmute)
+      })
+      if (frameCallbackId !== undefined && typeof video.cancelVideoFrameCallback === "function") {
+        video.cancelVideoFrameCallback(frameCallbackId)
+      }
+      if (video.srcObject === stream) video.srcObject = null
+    }
+  }, [videoElement, cameraStream, open, still])
 
   // Release the camera as soon as the dialog closes, and reset for next time.
   useEffect(() => {
@@ -236,7 +363,17 @@ export function CameraCaptureDialog({
 
   async function handleCapture() {
     const video = videoRef.current
-    if (!video || !video.videoWidth) return
+    const stream = streamRef.current
+    const hasLiveTrack = stream?.getVideoTracks().some((track) => track.readyState === "live")
+    if (
+      !cameraReady || !stream || !hasLiveTrack || !video || video.srcObject !== stream ||
+      video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA ||
+      !video.videoWidth || !video.videoHeight
+    ) {
+      setCameraReady(false)
+      setCameraError("The live camera is not ready yet. Wait for the preview, or upload a photo file instead.")
+      return
+    }
 
     setSaveError(null)
     try {
@@ -326,47 +463,52 @@ export function CameraCaptureDialog({
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>
-            {mode === "landscape"
-              ? "Fit the entire unit inside the horizontal guide, then capture. The photo is saved as a landscape image."
+            {mode === "vehicle"
+              ? "Fit the entire unit inside the portrait guide. The photo is saved as a portrait image with padding as needed."
               : "Position the face inside the guide, then capture. The photo is saved as a portrait ID shot."}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3">
-          <div className={`relative mx-auto ${mode === "landscape" ? "aspect-[4/3] w-full max-w-sm" : "aspect-[3/4] w-56"} overflow-hidden rounded-md border bg-muted`}>
+          <div className="relative mx-auto aspect-[3/4] w-56 overflow-hidden rounded-md border bg-muted">
             {still ? (
               // Object URL of a just-captured blob — next/image can't optimize it.
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={still.url}
                 alt="Captured photo preview"
-                className="h-full w-full object-cover"
+                className={`h-full w-full ${mode === "vehicle" ? "object-contain" : "object-cover"}`}
               />
-            ) : cameraError ? (
-              <div className="flex h-full flex-col items-center justify-center gap-2 p-4 text-center">
-                <CameraOff className="h-6 w-6 text-muted-foreground" />
-                <p className="text-xs text-muted-foreground">{cameraError}</p>
-              </div>
             ) : (
               <>
                 <video
-                  ref={videoRef}
+                  ref={attachVideo}
                   autoPlay
                   playsInline
                   muted
-                  className="h-full w-full object-cover"
+                  className={`h-full w-full ${mode === "vehicle" ? "object-contain" : "object-cover"}`}
                 />
                 {/* Framing guide */}
                 <div className="pointer-events-none absolute inset-0">
                   {mode === "portrait" ? (
                     <div className="absolute inset-x-[15%] inset-y-[10%] rounded-full border-2 border-dashed border-white/60" />
                   ) : (
-                    <div className="absolute inset-x-[8%] inset-y-[12%] rounded-md border-2 border-dashed border-white/60" />
+                    <div className="absolute inset-x-[8%] inset-y-[6%] rounded-md border-2 border-dashed border-white/60" />
                   )}
                 </div>
-                {starting && (
+                {cameraError && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-muted/95 p-4 text-center">
+                    <CameraOff className="h-6 w-6 text-muted-foreground" />
+                    <p className="text-xs text-muted-foreground">{cameraError}</p>
+                  </div>
+                )}
+                {(starting || (!cameraReady && !cameraError)) && (
                   <div className="absolute inset-0 flex items-center justify-center bg-muted/70">
-                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                    {starting ? (
+                      <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                    ) : (
+                      <p className="p-3 text-center text-xs text-muted-foreground">Waiting for live camera video…</p>
+                    )}
                   </div>
                 )}
               </>
@@ -380,13 +522,15 @@ export function CameraCaptureDialog({
                 value={deviceId ?? devices[0]?.deviceId}
                 onValueChange={(value) => setDeviceId(value ?? undefined)}
               >
-                <SelectTrigger className="w-full">
+              <SelectTrigger className="w-full min-w-0 [&_[data-slot=select-value]]:min-w-0 [&_[data-slot=select-value]]:truncate">
                   <SelectValue placeholder="Select camera" />
                 </SelectTrigger>
                 <SelectContent>
                   {devices.map((device, index) => (
                     <SelectItem key={device.deviceId} value={device.deviceId}>
-                      {device.label || `Camera ${index + 1}`}
+                      <span className="block min-w-0 max-w-full truncate">
+                        {cameraLabel(device.label, index)}
+                      </span>
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -441,7 +585,7 @@ export function CameraCaptureDialog({
               <Button
                 type="button"
                 onClick={handleCapture}
-                disabled={starting || !!cameraError}
+                disabled={starting || !!cameraError || !cameraReady}
               >
                 <Camera className="h-4 w-4" />
                 Capture
@@ -487,11 +631,11 @@ export function PhotoSlot({
           <img
             src={photoUrl}
             alt={label}
-            className={`h-full w-full ${mode === "landscape" ? "object-contain" : "object-cover"}`}
+            className={`h-full w-full ${mode === "vehicle" ? "object-contain" : "object-cover"}`}
           />
         ) : (
           <div className="flex h-full items-center justify-center">
-            {mode === "landscape" ? <CarFront className="h-8 w-8 text-muted-foreground/50" /> : <User className="h-8 w-8 text-muted-foreground/50" />}
+            {mode === "vehicle" ? <CarFront className="h-8 w-8 text-muted-foreground/50" /> : <User className="h-8 w-8 text-muted-foreground/50" />}
           </div>
         )}
         {busy && (
