@@ -41,3 +41,12 @@ test("photo persistence retains verify permission and granted edit restriction",
   assert.match(action, /\.from\("mtop_franchises"\)/)
   assert.match(action, /\.update\(\{ \[column\]: url \}\)/)
 })
+
+test("all photo slots share a 3:4 frame while Unit contains its full landscape image", () => {
+  const capture = fs.readFileSync(path.join(__dirname, "../src/components/mtop/photo-capture.tsx"), "utf8")
+  assert.match(capture, /<div className="relative aspect-\[3\/4\] w-full max-w-64 overflow-hidden rounded-md border bg-muted">/)
+  assert.match(capture, /mode === "landscape" \? "object-contain" : "object-cover"/)
+  assert.match(capture, /const PHOTO_WIDTH = 600[\s\S]*?const PHOTO_HEIGHT = 800/)
+  assert.match(capture, /const UNIT_WIDTH = 1200[\s\S]*?const UNIT_HEIGHT = 900/)
+  assert.match(capture, /mode === "landscape" \? "aspect-\[4\/3\] w-full max-w-sm" : "aspect-\[3\/4\] w-56"/)
+})

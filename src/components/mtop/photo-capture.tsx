@@ -479,7 +479,7 @@ export function PhotoSlot({
     <div className="space-y-2">
       <Label className="text-xs text-muted-foreground">{label}</Label>
 
-      <div className={`relative ${mode === "landscape" ? "aspect-[4/3]" : "aspect-[3/4]"} w-full max-w-64 overflow-hidden rounded-md border bg-muted`}>
+      <div className="relative aspect-[3/4] w-full max-w-64 overflow-hidden rounded-md border bg-muted">
         {photoUrl ? (
           // Supabase storage host isn't in next.config remotePatterns; a plain
           // img keeps this component free of image config.
@@ -487,7 +487,7 @@ export function PhotoSlot({
           <img
             src={photoUrl}
             alt={label}
-            className="h-full w-full object-cover"
+            className={`h-full w-full ${mode === "landscape" ? "object-contain" : "object-cover"}`}
           />
         ) : (
           <div className="flex h-full items-center justify-center">
