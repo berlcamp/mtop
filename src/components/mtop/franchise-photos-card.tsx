@@ -302,7 +302,7 @@ export function FranchisePhotosCard({
       <CardContent className="space-y-6">
         {error && <p className="text-sm text-destructive">{error}</p>}
 
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="flex flex-wrap gap-8">
           <PhotoSlot
             label="Franchise Owner"
             photoUrl={photos.owner}

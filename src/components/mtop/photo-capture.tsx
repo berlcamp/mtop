@@ -396,7 +396,7 @@ export function PhotoSlot({
   const [dialogOpen, setDialogOpen] = useState(false)
 
   return (
-    <div className="space-y-2">
+    <div className="w-32 space-y-2">
       <Label className="text-xs text-muted-foreground">{label}</Label>
 
       <div className="relative aspect-[3/4] w-32 overflow-hidden rounded-md border bg-muted">

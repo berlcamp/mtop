@@ -31,7 +31,7 @@ export function UnitPhotoSlot({ photoUrl, canEdit, busy, onUpload, onRemove }: {
     } finally { setProcessing(false) }
   }
 
-  return <div className="space-y-2">
+  return <div className="w-32 space-y-2">
     <Label className="text-xs text-muted-foreground">Unit</Label>
     <div className="relative aspect-[3/4] w-32 overflow-hidden rounded-md border bg-muted">
       {photoUrl ? <button type="button" className="h-full w-full focus-visible:outline-2 focus-visible:outline-ring" onClick={() => setOpen(true)} aria-label="View Unit Photo">
