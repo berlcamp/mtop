@@ -522,9 +522,9 @@ export function ApplicationDetail({
         </Alert>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid min-w-0 grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Main content — 2/3 */}
-        <div className="space-y-6 lg:col-span-2">
+        <div className="min-w-0 space-y-6 lg:col-span-2">
           {/* Applicant Info */}
           <Card>
             <CardHeader>
@@ -692,7 +692,7 @@ export function ApplicationDetail({
         </div>
 
         {/* Sidebar — 1/3 */}
-        <div className="space-y-6">
+        <div className="min-w-0 space-y-6">
           {/* Approval Stepper */}
           <Card>
             <CardHeader>

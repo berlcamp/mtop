@@ -62,16 +62,19 @@ function Breadcrumbs() {
   if (crumbs.length === 0) return null
 
   return (
-    <nav className="flex items-center gap-1 text-sm">
+    <nav className="flex min-w-0 items-center gap-1 overflow-hidden text-sm">
       {crumbs.map((crumb, i) => (
-        <span key={crumb.href} className="flex items-center gap-1">
+        <span
+          key={crumb.href}
+          className={`flex min-w-0 items-center gap-1 ${i < crumbs.length - 1 ? "hidden sm:flex" : ""}`}
+        >
           {i > 0 && (
             <span className="text-muted-foreground/40 select-none text-xs">/</span>
           )}
           <span
             className={
               i === crumbs.length - 1
-                ? "font-semibold text-foreground"
+                ? "block min-w-0 truncate font-semibold text-foreground"
                 : "text-muted-foreground"
             }
           >
