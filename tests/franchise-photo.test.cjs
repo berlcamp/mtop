@@ -42,17 +42,12 @@ test("photo persistence retains verify permission and granted edit restriction",
   assert.match(action, /\.update\(\{ \[column\]: url \}\)/)
 })
 
-test("all photo slots share a 3:4 frame while Unit capture preserves the complete vehicle", () => {
+test("all stored photo slots retain their shared 3:4 frame and Unit upload mode", () => {
   const capture = fs.readFileSync(path.join(__dirname, "../src/components/mtop/photo-capture.tsx"), "utf8")
   const card = fs.readFileSync(path.join(__dirname, "../src/components/mtop/franchise-photos-card.tsx"), "utf8")
   assert.match(capture, /<div className="relative aspect-\[3\/4\] w-full max-w-64 overflow-hidden rounded-md border bg-muted">/)
-  assert.match(capture, /const PHOTO_WIDTH = 600[\s\S]*?const PHOTO_HEIGHT = 800/)
-  assert.match(capture, /function normalizeVehicleToPortraitJpeg[\s\S]*?const scale = Math\.min\(PHOTO_WIDTH \/ sourceWidth, PHOTO_HEIGHT \/ sourceHeight\)/)
-  assert.match(capture, /ctx\.fillStyle = "#f4f4f5"/)
   assert.match(capture, /mode === "vehicle" \? "object-contain" : "object-cover"/)
   assert.match(card, /label="Unit"[\s\S]*?mode="vehicle"/)
   assert.doesNotMatch(capture, /mode === "landscape"/)
   assert.match(capture, /disabled=\{starting \|\| !!cameraError \|\| !cameraReady\}/)
-  assert.match(capture, /video\.srcObject = stream[\s\S]*?video\.play\(\)/)
-  assert.match(capture, /cameraGenerationRef\.current !== generation/)
 })

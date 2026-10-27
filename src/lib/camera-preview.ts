@@ -3,16 +3,16 @@
  * producing a decoded frame, and backed by a live video track.
  */
 export function isCameraPreviewReady(
-  video: Pick<HTMLVideoElement, "srcObject" | "readyState" | "videoWidth" | "videoHeight">,
-  stream: Pick<MediaStream, "getVideoTracks"> | null,
+  video: Pick<HTMLVideoElement, "srcObject" | "readyState" | "videoWidth" | "videoHeight" | "paused" | "ended">,
+  stream: Pick<MediaStream, "getVideoTracks" | "active"> | null,
   playbackStarted: boolean,
   frameReceived: boolean
 ): boolean {
   return Boolean(
-    stream &&
+    stream && stream.active !== false && !video.paused && !video.ended &&
       playbackStarted &&
       frameReceived &&
-      stream.getVideoTracks().some((track) => track.readyState === "live" && track.muted !== true) &&
+      stream.getVideoTracks().some((track) => track.readyState === "live" && track.enabled !== false && track.muted !== true) &&
       video.srcObject === stream &&
       video.readyState >= 2 &&
       video.videoWidth > 0 &&

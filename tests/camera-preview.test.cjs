@@ -36,6 +36,18 @@ test("camera readiness fails closed before playback or decoded frames", () => {
   assert.equal(isCameraPreviewReady(video, stream, true, false), false)
 })
 
+test("inactive, disabled, muted, paused, or ended media cannot be captured", () => {
+  const { track, stream, video } = cameraFixture()
+  for (const state of [{ paused: true }, { ended: true }]) {
+    assert.equal(isCameraPreviewReady({ ...video, ...state }, stream, true, true), false)
+  }
+  assert.equal(isCameraPreviewReady(video, { ...stream, active: false }, true, true), false)
+  for (const state of [{ muted: true }, { enabled: false }]) {
+    Object.assign(track, { muted: false, enabled: true }, state)
+    assert.equal(isCameraPreviewReady(video, stream, true, true), false)
+  }
+})
+
 test("camera readiness fails closed for missing, detached, ended, zero-size, or undecoded video", () => {
   const { track, stream, video } = cameraFixture()
   assert.equal(isCameraPreviewReady(video, null, true, true), false)

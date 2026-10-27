@@ -29,115 +29,8 @@ import {
   User,
 } from "lucide-react"
 import { isCameraPreviewReady } from "@/lib/camera-preview"
-
-// Portrait ID proportions — the Franchise Card expects 3:4.
-const PHOTO_WIDTH = 600
-const PHOTO_HEIGHT = 800
-const PHOTO_ASPECT = PHOTO_WIDTH / PHOTO_HEIGHT
-const JPEG_QUALITY = 0.85
-
-type PhotoMode = "portrait" | "vehicle"
-
-/**
- * Draws a center-cropped 3:4 portrait of `source` onto a 600x800 canvas and
- * returns it as a JPEG blob. Webcams hand us 4:3 landscape and phone photos can
- * be anything, so both paths go through here to produce identical output.
- */
-function normalizeToPortraitJpeg(
-  source: HTMLVideoElement | HTMLImageElement,
-  sourceWidth: number,
-  sourceHeight: number
-): Promise<Blob> {
-  const canvas = document.createElement("canvas")
-  canvas.width = PHOTO_WIDTH
-  canvas.height = PHOTO_HEIGHT
-
-  const ctx = canvas.getContext("2d")
-  if (!ctx) return Promise.reject(new Error("Canvas is not available."))
-
-  let sw = sourceWidth
-  let sh = sourceHeight
-
-  if (sourceWidth / sourceHeight > PHOTO_ASPECT) {
-    sw = sourceHeight * PHOTO_ASPECT
-  } else {
-    sh = sourceWidth / PHOTO_ASPECT
-  }
-
-  const sx = (sourceWidth - sw) / 2
-  const sy = (sourceHeight - sh) / 2
-
-  ctx.drawImage(source, sx, sy, sw, sh, 0, 0, PHOTO_WIDTH, PHOTO_HEIGHT)
-
-  return new Promise((resolve, reject) => {
-    canvas.toBlob(
-      (blob) =>
-        blob ? resolve(blob) : reject(new Error("Failed to encode the photo.")),
-      "image/jpeg",
-      JPEG_QUALITY
-    )
-  })
-}
-
-function normalizeVehicleToPortraitJpeg(
-  source: HTMLVideoElement | HTMLImageElement,
-  sourceWidth: number,
-  sourceHeight: number
-): Promise<Blob> {
-  const canvas = document.createElement("canvas")
-  canvas.width = PHOTO_WIDTH
-  canvas.height = PHOTO_HEIGHT
-  const ctx = canvas.getContext("2d")
-  if (!ctx) return Promise.reject(new Error("Canvas is not available."))
-
-  // Keep the complete vehicle visible inside the 3:4 portrait output. Neutral
-  // padding is preferable to cropping the front or rear off a landscape unit.
-  ctx.fillStyle = "#f4f4f5"
-  ctx.fillRect(0, 0, PHOTO_WIDTH, PHOTO_HEIGHT)
-  const scale = Math.min(PHOTO_WIDTH / sourceWidth, PHOTO_HEIGHT / sourceHeight)
-  const drawWidth = sourceWidth * scale
-  const drawHeight = sourceHeight * scale
-  ctx.drawImage(
-    source,
-    (PHOTO_WIDTH - drawWidth) / 2,
-    (PHOTO_HEIGHT - drawHeight) / 2,
-    drawWidth,
-    drawHeight
-  )
-
-  return new Promise((resolve, reject) => {
-    canvas.toBlob(
-      (blob) => blob ? resolve(blob) : reject(new Error("Failed to encode the photo.")),
-      "image/jpeg",
-      JPEG_QUALITY
-    )
-  })
-}
-
-function normalizePhoto(mode: PhotoMode, source: HTMLVideoElement | HTMLImageElement, width: number, height: number) {
-  return mode === "vehicle"
-    ? normalizeVehicleToPortraitJpeg(source, width, height)
-    : normalizeToPortraitJpeg(source, width, height)
-}
-
-function describeCameraError(err: unknown): string {
-  const name = (err as { name?: string })?.name
-  if (name === "NotAllowedError" || name === "SecurityError") {
-    return "Camera access was blocked. Allow camera access in your browser, or upload a photo file instead."
-  }
-  if (name === "NotFoundError" || name === "OverconstrainedError") {
-    return "No webcam was found on this computer. Upload a photo file instead."
-  }
-  if (name === "NotReadableError") {
-    return "The webcam is already in use by another application. Close it and try again, or upload a photo file instead."
-  }
-  return (err as Error)?.message ?? "The camera could not be started."
-}
-
-function cameraLabel(label: string, index: number): string {
-  const readable = label.trim() || `Camera ${index + 1}`
-  return readable.length > 48 ? `${readable.slice(0, 45)}…` : readable
-}
+import { cameraLabel, startCameraPreview, type CameraState } from "@/lib/camera-session"
+import { normalizePhoto, type PhotoMode } from "@/lib/photo-normalization"
 
 interface CameraCaptureDialogProps {
   open: boolean
@@ -156,17 +49,21 @@ export function CameraCaptureDialog({
   onCapture,
 }: CameraCaptureDialogProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
+  const titleRef = useRef<HTMLHeadingElement>(null)
   const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null)
-  const streamRef = useRef<MediaStream | null>(null)
-  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null)
-  const [cameraReady, setCameraReady] = useState(false)
-  const cameraGenerationRef = useRef(0)
+  const sessionRef = useRef<ReturnType<typeof startCameraPreview> | null>(null)
+  const [cameraState, setCameraState] = useState<CameraState>({ status: "starting" })
+  const cameraReady = cameraState.status === "ready"
+  const starting = cameraState.status === "starting"
+  const cameraError = cameraState.error ?? null
+  const [retry, setRetry] = useState(0)
+  const [activeDeviceId, setActiveDeviceId] = useState<string | null>(null)
+  const photoOperationRef = useRef(0)
+  const stillUrlRef = useRef<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([])
   const [deviceId, setDeviceId] = useState<string | undefined>(undefined)
-  const [starting, setStarting] = useState(false)
-  const [cameraError, setCameraError] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -174,11 +71,8 @@ export function CameraCaptureDialog({
   const [still, setStill] = useState<{ blob: Blob; url: string } | null>(null)
 
   const stopStream = useCallback(() => {
-    streamRef.current?.getTracks().forEach((track) => track.stop())
-    streamRef.current = null
-    setCameraStream(null)
-    setCameraReady(false)
-    if (videoRef.current) videoRef.current.srcObject = null
+    sessionRef.current?.stop()
+    sessionRef.current = null
   }, [])
 
   const attachVideo = useCallback((node: HTMLVideoElement | null) => {
@@ -186,216 +80,84 @@ export function CameraCaptureDialog({
     setVideoElement(node)
   }, [])
 
-  // Start (or restart, when the selected camera changes) the live preview.
   useEffect(() => {
-    if (!open || still) return
+    if (open) videoElement?.closest("[data-slot=dialog-content]")
+      ?.querySelector("[data-slot=camera-dialog-scroll]")?.scrollTo({ top: 0 })
+  }, [open, videoElement])
 
-    let cancelled = false
-    const generation = ++cameraGenerationRef.current
-    setStarting(true)
-    setCameraReady(false)
-    setCameraError(null)
-    stopStream()
-
-    async function start() {
-      if (!navigator.mediaDevices?.getUserMedia) {
-        setCameraError(
-          window.isSecureContext
-            ? "This browser does not support camera access. Upload a photo file instead."
-            : "Camera access requires a secure browser context. Use https:// or localhost, or upload a photo file instead."
-        )
-        setStarting(false)
-        return
-      }
-
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: deviceId
-            ? { deviceId: { exact: deviceId } }
-            : { width: { ideal: 1280 }, height: { ideal: 960 } },
-          audio: false,
-        })
-
-        if (cancelled || cameraGenerationRef.current !== generation) {
-          stream.getTracks().forEach((track) => track.stop())
-          return
-        }
-
-        streamRef.current = stream
-        setCameraStream(stream)
-
-        // Device labels are only populated once permission has been granted.
-        const all = await navigator.mediaDevices.enumerateDevices()
-        if (!cancelled && cameraGenerationRef.current === generation) {
-          setDevices(all.filter((d) => d.kind === "videoinput"))
-        }
-      } catch (err) {
-        if (!cancelled && cameraGenerationRef.current === generation) {
-          setCameraError(describeCameraError(err))
-        }
-      } finally {
-        if (!cancelled && cameraGenerationRef.current === generation) setStarting(false)
-      }
-    }
-
-    start()
-
-    return () => {
-      cancelled = true
-      cameraGenerationRef.current = generation + 1
-      const stream = streamRef.current
-      stream?.getTracks().forEach((track) => track.stop())
-      if (streamRef.current === stream) streamRef.current = null
-      setCameraStream((current) => current === stream ? null : current)
-      if (videoRef.current?.srcObject === stream) videoRef.current.srcObject = null
-      setCameraReady(false)
-    }
-  }, [open, still, deviceId, stopStream])
-
-  // Dialog content is portaled, so attach only after React has mounted the
-  // actual video element. Acquisition and playback have separate lifecycles.
+  // Acquisition starts only once the portaled video is mounted. Every effect
+  // owns one session; cleanup invalidates and stops even late permission results.
   useEffect(() => {
-    const video = videoElement
-    const stream = cameraStream
-    if (!video || !stream || !open || still) return
-
-    let active = true
-    let playbackStarted = false
-    let frameReceived = false
-    let frameCallbackId: number | undefined
-    const playingHandler = () => {
-      playbackStarted = true
-      updateReady()
+    if (!open || still || !videoElement) return
+    if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+      setCameraState({ status: "error", error: !window.isSecureContext
+        ? "Camera access requires HTTPS or localhost. Open a secure address, or upload a photo instead."
+        : "This browser does not support camera access. Upload a photo instead." })
+      return
     }
-
-    function updateReady() {
-      if (!active || !video) return
-      setCameraReady(isCameraPreviewReady(video, stream, playbackStarted, frameReceived))
-    }
-    function onFrame() {
-      if (!active) return
-      frameReceived = true
-      updateReady()
-    }
-    function onTrackEnded() {
-      if (!active) return
-      setCameraReady(false)
-      setCameraError("The camera stream stopped. Restart the dialog or upload a photo file instead.")
-      setStarting(false)
-    }
-    function onTrackMute() {
-      if (active) setCameraReady(false)
-    }
-    function onTrackUnmute() {
-      if (active) updateReady()
-    }
-    function onPlaybackError() {
-      if (!active) return
-      setCameraReady(false)
-      setCameraError("The camera preview could not play. Check browser camera access and try again, or upload a photo file instead.")
-      setStarting(false)
-    }
-
-    video.autoplay = true
-    video.muted = true
-    video.playsInline = true
-    video.srcObject = stream
-    video.addEventListener("loadedmetadata", updateReady)
-    video.addEventListener("canplay", onFrame)
-    video.addEventListener("playing", playingHandler)
-    video.addEventListener("error", onPlaybackError)
-    const tracks = stream.getVideoTracks()
-    tracks.forEach((track) => {
-      track.addEventListener("ended", onTrackEnded)
-      track.addEventListener("mute", onTrackMute)
-      track.addEventListener("unmute", onTrackUnmute)
+    const session = startCameraPreview(videoElement, navigator.mediaDevices, {
+      deviceId,
+      onState: setCameraState,
+      onDevices: setDevices,
+      onSelectedDevice: setActiveDeviceId,
     })
-
-    if (typeof video.requestVideoFrameCallback === "function") {
-      const requestFrame = () => {
-        if (!active) return
-        frameCallbackId = video.requestVideoFrameCallback(() => {
-          onFrame()
-          if (!frameReceived) requestFrame()
-        })
-      }
-      requestFrame()
-    }
-
-    video.play().then(() => {
-      if (!active) return
-      playbackStarted = true
-      updateReady()
-    }).catch(onPlaybackError)
-
+    sessionRef.current = session
     return () => {
-      active = false
-      video.removeEventListener("loadedmetadata", updateReady)
-      video.removeEventListener("canplay", onFrame)
-      video.removeEventListener("playing", playingHandler)
-      video.removeEventListener("error", onPlaybackError)
-      tracks.forEach((track) => {
-        track.removeEventListener("ended", onTrackEnded)
-        track.removeEventListener("mute", onTrackMute)
-        track.removeEventListener("unmute", onTrackUnmute)
-      })
-      if (frameCallbackId !== undefined && typeof video.cancelVideoFrameCallback === "function") {
-        video.cancelVideoFrameCallback(frameCallbackId)
-      }
-      if (video.srcObject === stream) video.srcObject = null
+      session.stop()
+      if (sessionRef.current === session) sessionRef.current = null
     }
-  }, [videoElement, cameraStream, open, still])
+  }, [open, still, videoElement, deviceId, retry])
 
-  // Release the camera as soon as the dialog closes, and reset for next time.
   useEffect(() => {
-    if (open) return
-    stopStream()
-    setStill((prev) => {
-      if (prev) URL.revokeObjectURL(prev.url)
-      return null
-    })
-    setCameraError(null)
-    setSaveError(null)
-    setSaving(false)
+    const operations = photoOperationRef
+    if (!open) {
+      stopStream()
+      setCameraState({ status: "starting" })
+      setStill(null)
+      setSaveError(null)
+      setSaving(false)
+    }
+    // Invalidate image decoding/encoding callbacks on close and unmount.
+    return () => {
+      operations.current++
+      if (stillUrlRef.current) URL.revokeObjectURL(stillUrlRef.current)
+      stillUrlRef.current = null
+    }
   }, [open, stopStream])
 
-  useEffect(() => stopStream, [stopStream])
+  function showStill(blob: Blob) {
+    if (stillUrlRef.current) URL.revokeObjectURL(stillUrlRef.current)
+    const url = URL.createObjectURL(blob)
+    stillUrlRef.current = url
+    stopStream()
+    setStill({ blob, url })
+  }
 
   async function handleCapture() {
     const video = videoRef.current
-    const stream = streamRef.current
-    const hasLiveTrack = stream?.getVideoTracks().some((track) => track.readyState === "live")
-    if (
-      !cameraReady || !stream || !hasLiveTrack || !video || video.srcObject !== stream ||
-      video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA ||
-      !video.videoWidth || !video.videoHeight
-    ) {
-      setCameraReady(false)
-      setCameraError("The live camera is not ready yet. Wait for the preview, or upload a photo file instead.")
+    const stream = sessionRef.current?.getStream() ?? null
+    if (!cameraReady || !video || !isCameraPreviewReady(video, stream, true, true)) {
+      setCameraState({ status: "error", error: "The live camera is not ready. Retry or upload a photo instead." })
+      stopStream()
       return
     }
 
     setSaveError(null)
+    const operation = ++photoOperationRef.current
     try {
-      const blob = await normalizePhoto(
-        mode,
-        video,
-        video.videoWidth,
-        video.videoHeight
-      )
-      stopStream()
-      setStill({ blob, url: URL.createObjectURL(blob) })
+      const blob = await normalizePhoto(video, video.videoWidth, video.videoHeight)
+      if (operation === photoOperationRef.current) showStill(blob)
     } catch (err) {
-      setSaveError((err as Error).message)
+      if (operation === photoOperationRef.current) setSaveError((err as Error).message)
     }
   }
 
   function handleRetake() {
     setSaveError(null)
-    setStill((prev) => {
-      if (prev) URL.revokeObjectURL(prev.url)
-      return null
-    })
+    setCameraState({ status: "starting" })
+    if (stillUrlRef.current) URL.revokeObjectURL(stillUrlRef.current)
+    stillUrlRef.current = null
+    setStill(null)
   }
 
   async function handleFilePicked(e: React.ChangeEvent<HTMLInputElement>) {
@@ -404,6 +166,7 @@ export function CameraCaptureDialog({
     if (!file) return
 
     setSaveError(null)
+    const operation = ++photoOperationRef.current
     const objectUrl = URL.createObjectURL(file)
 
     try {
@@ -415,15 +178,14 @@ export function CameraCaptureDialog({
       })
 
       const blob = await normalizePhoto(
-        mode,
         img,
         img.naturalWidth,
-        img.naturalHeight
+        img.naturalHeight,
+        mode === "vehicle"
       )
-      stopStream()
-      setStill({ blob, url: URL.createObjectURL(blob) })
+      if (operation === photoOperationRef.current) showStill(blob)
     } catch (err) {
-      setSaveError((err as Error).message)
+      if (operation === photoOperationRef.current) setSaveError((err as Error).message)
     } finally {
       URL.revokeObjectURL(objectUrl)
     }
@@ -459,140 +221,154 @@ export function CameraCaptureDialog({
         onOpenChange(next)
       }}
     >
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>
-            {mode === "vehicle"
-              ? "Fit the entire unit inside the portrait guide. The photo is saved as a portrait image with padding as needed."
-              : "Position the face inside the guide, then capture. The photo is saved as a portrait ID shot."}
-          </DialogDescription>
-        </DialogHeader>
+      <DialogContent initialFocus={titleRef} className="flex max-h-[calc(100dvh-2rem)] flex-col p-0 sm:max-w-md">
+        <div data-slot="camera-dialog-scroll" className="min-h-0 min-w-0 space-y-4 overflow-y-auto rounded-xl p-5">
+          <DialogHeader className="min-w-0 pr-6">
+            <DialogTitle ref={titleRef} tabIndex={-1}>{title}</DialogTitle>
+            <DialogDescription className="break-words">
+              {mode === "vehicle"
+                ? "Fit the entire unit in the portrait preview. Capture saves this view. Uploaded unit photos keep the full image with padding."
+                : "Position the face inside the guide, then capture. The photo is saved as a portrait ID shot."}
+            </DialogDescription>
+          </DialogHeader>
 
-        <div className="space-y-3">
-          <div className="relative mx-auto aspect-[3/4] w-56 overflow-hidden rounded-md border bg-muted">
-            {still ? (
-              // Object URL of a just-captured blob — next/image can't optimize it.
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={still.url}
-                alt="Captured photo preview"
-                className={`h-full w-full ${mode === "vehicle" ? "object-contain" : "object-cover"}`}
-              />
-            ) : (
-              <>
-                <video
-                  ref={attachVideo}
-                  autoPlay
-                  playsInline
-                  muted
-                  className={`h-full w-full ${mode === "vehicle" ? "object-contain" : "object-cover"}`}
+          <div className="min-w-0 space-y-3">
+            <div className="relative mx-auto aspect-[3/4] w-full max-w-56 overflow-hidden rounded-md bg-muted ring-1 ring-inset ring-border">
+              {still ? (
+                // Object URL of a just-captured blob — next/image can't optimize it.
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={still.url}
+                  alt="Captured photo preview"
+                  className="absolute inset-0 h-full w-full object-cover object-center"
                 />
-                {/* Framing guide */}
-                <div className="pointer-events-none absolute inset-0">
-                  {mode === "portrait" ? (
-                    <div className="absolute inset-x-[15%] inset-y-[10%] rounded-full border-2 border-dashed border-white/60" />
-                  ) : (
-                    <div className="absolute inset-x-[8%] inset-y-[6%] rounded-md border-2 border-dashed border-white/60" />
-                  )}
-                </div>
-                {cameraError && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-muted/95 p-4 text-center">
-                    <CameraOff className="h-6 w-6 text-muted-foreground" />
-                    <p className="text-xs text-muted-foreground">{cameraError}</p>
-                  </div>
-                )}
-                {(starting || (!cameraReady && !cameraError)) && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-muted/70">
-                    {starting ? (
-                      <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              ) : (
+                <>
+                  <video
+                    ref={attachVideo}
+                    autoPlay
+                    playsInline
+                    muted
+                    className="absolute inset-0 h-full w-full object-cover object-center"
+                  />
+                  {/* Framing guide */}
+                  <div className="pointer-events-none absolute inset-0">
+                    {mode === "portrait" ? (
+                      <div className="absolute inset-x-[15%] inset-y-[10%] rounded-full border-2 border-dashed border-white/60" />
                     ) : (
-                      <p className="p-3 text-center text-xs text-muted-foreground">Waiting for live camera video…</p>
+                      <div className="absolute inset-x-[8%] inset-y-[6%] rounded-md border-2 border-dashed border-white/60" />
                     )}
                   </div>
-                )}
-              </>
+                  {cameraError && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-muted/95 p-4 text-center">
+                      <CameraOff className="h-6 w-6 text-muted-foreground" />
+                      <p role="alert" className="text-xs text-muted-foreground">{cameraError}</p>
+                      <Button type="button" size="sm" variant="outline" onClick={() => setRetry((value) => value + 1)}>Retry camera</Button>
+                    </div>
+                  )}
+                  {(!cameraError && !cameraReady) && (
+                    <div role="status" className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-muted/90 p-3 text-center">
+                      {starting ? (
+                        <>
+                          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                          <p className="text-xs text-muted-foreground">Initializing camera…</p>
+                        </>
+                      ) : (
+                        <p className="p-3 text-center text-xs text-muted-foreground">Waiting for live camera video…</p>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            {!still && devices.length > 1 && (
+              <div className="min-w-0 space-y-1.5">
+                <Label htmlFor="capture-camera" className="text-xs">Camera</Label>
+                <Select
+                  items={devices.map((device, index) => ({ value: device.deviceId, label: cameraLabel(device.label, index, device.deviceId) }))}
+                  value={activeDeviceId}
+                  onValueChange={(value) => {
+                    stopStream()
+                    setCameraState({ status: "starting" })
+                    setActiveDeviceId(value)
+                    setDeviceId(value ?? undefined)
+                  }}
+                >
+                  <SelectTrigger id="capture-camera" className="w-full min-w-0 [&_[data-slot=select-value]]:min-w-0 [&_[data-slot=select-value]]:truncate">
+                    <SelectValue className="block min-w-0 truncate" placeholder="Select camera">
+                      {cameraLabel(devices.find((device) => device.deviceId === activeDeviceId)?.label ?? "", Math.max(0, devices.findIndex((device) => device.deviceId === activeDeviceId)), activeDeviceId ?? "")}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent alignItemWithTrigger={false} className="max-w-[calc(100vw-2rem)]">
+                    {devices.map((device, index) => (
+                      <SelectItem key={device.deviceId} value={device.deviceId}>
+                        <span className="block min-w-0 max-w-full truncate">
+                          {cameraLabel(device.label, index, device.deviceId)}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {saveError && (
+              <p className="text-sm text-destructive">{saveError}</p>
             )}
           </div>
 
-          {!still && devices.length > 1 && (
-            <div className="space-y-1.5">
-              <Label className="text-xs">Camera</Label>
-              <Select
-                value={deviceId ?? devices[0]?.deviceId}
-                onValueChange={(value) => setDeviceId(value ?? undefined)}
-              >
-              <SelectTrigger className="w-full min-w-0 [&_[data-slot=select-value]]:min-w-0 [&_[data-slot=select-value]]:truncate">
-                  <SelectValue placeholder="Select camera" />
-                </SelectTrigger>
-                <SelectContent>
-                  {devices.map((device, index) => (
-                    <SelectItem key={device.deviceId} value={device.deviceId}>
-                      <span className="block min-w-0 max-w-full truncate">
-                        {cameraLabel(device.label, index)}
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleFilePicked}
+          />
 
-          {saveError && (
-            <p className="text-sm text-destructive">{saveError}</p>
-          )}
-        </div>
-
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={handleFilePicked}
-        />
-
-        <DialogFooter className="gap-2 sm:justify-between">
-          {still ? (
-            <>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={handleRetake}
-                disabled={saving}
-              >
-                <RefreshCw className="h-4 w-4" />
-                Retake
-              </Button>
-              <Button type="button" onClick={handleUsePhoto} disabled={saving}>
-                {saving ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
+          <DialogFooter className="min-w-0 gap-2 sm:flex-wrap sm:justify-between">
+            {still ? (
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleRetake}
+                  disabled={saving}
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  Retake
+                </Button>
+                <Button type="button" onClick={handleUsePhoto} disabled={saving}>
+                  {saving ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Camera className="h-4 w-4" />
+                  )}
+                  Use Photo
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <ImageUp className="h-4 w-4" />
+                  Upload instead
+                </Button>
+                <Button
+                  type="button"
+                  onClick={handleCapture}
+                  disabled={starting || !!cameraError || !cameraReady}
+                >
                   <Camera className="h-4 w-4" />
-                )}
-                Use Photo
-              </Button>
-            </>
-          ) : (
-            <>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <ImageUp className="h-4 w-4" />
-                Upload instead
-              </Button>
-              <Button
-                type="button"
-                onClick={handleCapture}
-                disabled={starting || !!cameraError || !cameraReady}
-              >
-                <Camera className="h-4 w-4" />
-                Capture
-              </Button>
-            </>
-          )}
-        </DialogFooter>
+                  Capture
+                </Button>
+              </>
+            )}
+          </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
   )
