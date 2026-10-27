@@ -399,7 +399,7 @@ export function PhotoSlot({
     <div className="space-y-2">
       <Label className="text-xs text-muted-foreground">{label}</Label>
 
-      <div className="relative aspect-[3/4] w-full max-w-64 overflow-hidden rounded-md border bg-muted">
+      <div className="relative aspect-[3/4] w-32 overflow-hidden rounded-md border bg-muted">
         {photoUrl ? (
           // Supabase storage host isn't in next.config remotePatterns; a plain
           // img keeps this component free of image config.

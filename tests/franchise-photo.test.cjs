@@ -45,7 +45,9 @@ test("photo persistence retains verify permission and granted edit restriction",
 test("all stored photo slots retain their shared 3:4 frame and Unit upload mode", () => {
   const capture = fs.readFileSync(path.join(__dirname, "../src/components/mtop/photo-capture.tsx"), "utf8")
   const card = fs.readFileSync(path.join(__dirname, "../src/components/mtop/franchise-photos-card.tsx"), "utf8")
-  assert.match(capture, /<div className="relative aspect-\[3\/4\] w-full max-w-64 overflow-hidden rounded-md border bg-muted">/)
+  assert.match(capture, /<div className="relative aspect-\[3\/4\] w-32 overflow-hidden rounded-md border bg-muted">/)
+  const unit = fs.readFileSync(path.join(__dirname, "../src/components/mtop/unit-photo-slot.tsx"), "utf8")
+  assert.match(unit, /<div className="relative aspect-\[3\/4\] w-32 overflow-hidden rounded-md border bg-muted">/)
   assert.match(capture, /mode === "vehicle" \? "object-contain" : "object-cover"/)
   assert.match(card, /<UnitPhotoSlot[\s\S]*?onUpload=/)
   assert.doesNotMatch(capture, /mode === "landscape"/)

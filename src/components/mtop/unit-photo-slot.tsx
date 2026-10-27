@@ -33,7 +33,7 @@ export function UnitPhotoSlot({ photoUrl, canEdit, busy, onUpload, onRemove }: {
 
   return <div className="space-y-2">
     <Label className="text-xs text-muted-foreground">Unit</Label>
-    <div className="relative aspect-[3/4] w-full max-w-64 overflow-hidden rounded-md border bg-muted">
+    <div className="relative aspect-[3/4] w-32 overflow-hidden rounded-md border bg-muted">
       {photoUrl ? <button type="button" className="h-full w-full focus-visible:outline-2 focus-visible:outline-ring" onClick={() => setOpen(true)} aria-label="View Unit Photo">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={photoUrl} alt="Unit" className="h-full w-full object-contain" />
