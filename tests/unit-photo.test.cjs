@@ -30,11 +30,11 @@ test("Unit image processing keeps complete proportional dimensions", async () =>
   }
 })
 
-test("Unit has an independent labeled input and viewer, while camera slots remain", () => {
+test("Unit has an independent accessible upload button, file input, and viewer, while camera slots remain", () => {
   const unit = fs.readFileSync("src/components/mtop/unit-photo-slot.tsx", "utf8")
   const card = fs.readFileSync("src/components/mtop/franchise-photos-card.tsx", "utf8")
-  assert.match(unit, /<label htmlFor=\{id\}/)
-  assert.match(unit, /type="file"/)
+  assert.match(unit, /<Button type="button" size="sm" variant="outline" disabled=\{disabled\} onClick=\{\(\) => fileInputRef\.current\?\.click\(\)\}/)
+  assert.match(unit, /<input ref=\{fileInputRef\} type="file"/)
   assert.doesNotMatch(unit, /getUserMedia|CameraCaptureDialog|capture=/)
   assert.match(unit, /object-contain/)
   assert.match(unit, /View Unit Photo/)

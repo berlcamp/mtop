@@ -1,8 +1,8 @@
 "use client"
 
-import { useId, useState } from "react"
+import { useRef, useState } from "react"
 import { CarFront, ImageUp, Loader2, Trash2 } from "lucide-react"
-import { Button, buttonVariants } from "@/components/ui/button"
+import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { prepareUnitPhoto } from "@/lib/unit-photo"
@@ -11,7 +11,7 @@ export function UnitPhotoSlot({ photoUrl, canEdit, busy, onUpload, onRemove }: {
   photoUrl: string | null; canEdit: boolean; busy: boolean
   onUpload: (blob: Blob) => Promise<string | null>; onRemove: () => void
 }) {
-  const id = useId()
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [open, setOpen] = useState(false)
   const [processing, setProcessing] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -41,8 +41,8 @@ export function UnitPhotoSlot({ photoUrl, canEdit, busy, onUpload, onRemove }: {
       {disabled && <div className="absolute inset-0 flex items-center justify-center bg-muted/70"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>}
     </div>
     {canEdit && <div className="flex flex-wrap gap-2">
-      <input id={id} type="file" accept="image/jpeg,image/png,image/webp" className="sr-only peer" disabled={disabled} onChange={picked} />
-      <label htmlFor={id} className={`${buttonVariants({ variant: "outline", size: "sm" })} cursor-pointer peer-focus-visible:ring-3 peer-focus-visible:ring-ring/50 ${disabled ? "pointer-events-none opacity-50" : ""}`}><ImageUp className="h-3.5 w-3.5" />Upload Image</label>
+      <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" tabIndex={-1} aria-hidden="true" disabled={disabled} onChange={picked} />
+      <Button type="button" size="sm" variant="outline" disabled={disabled} onClick={() => fileInputRef.current?.click()}><ImageUp className="h-3.5 w-3.5" />Upload Image</Button>
       {photoUrl && <Button type="button" size="sm" variant="ghost" onClick={onRemove} disabled={disabled}><Trash2 className="h-3.5 w-3.5" />Remove</Button>}
     </div>}
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
