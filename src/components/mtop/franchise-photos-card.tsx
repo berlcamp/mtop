@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button"
 import { Camera, Loader2, Pencil } from "lucide-react"
 import { InfoItem } from "@/components/shared/info-item"
 import { PhotoSlot } from "@/components/mtop/photo-capture"
+import { UnitPhotoSlot } from "@/components/mtop/unit-photo-slot"
 import {
   updateFranchisePhoto,
   updateFranchiseDriverDetails,
@@ -27,7 +28,7 @@ const BUCKET = "mtop-documents"
  * Turns a public storage URL back into its object path so an old portrait can
  * be removed once its replacement is saved.
  */
-function storagePathFromPublicUrl(url: string, franchiseId: string): string | null {
+function storagePathFromPublicUrl(url: string, franchiseId: string, slot: Slot): string | null {
   const marker = `/${BUCKET}/`
   const index = url.indexOf(marker)
   if (index === -1) return null
@@ -37,7 +38,7 @@ function storagePathFromPublicUrl(url: string, franchiseId: string): string | nu
   } catch {
     return null
   }
-  return new RegExp(`^photos/${franchiseId}/mtop_(owner|driver|unit)_.+\\.jpg$`, "i").test(path)
+  return new RegExp(`^photos/${franchiseId}/mtop_${slot}_(?:[0-9]+|[0-9a-f-]{36})\\.jpg$`, "i").test(path)
     ? path
     : null
 }
@@ -118,9 +119,9 @@ export function FranchisePhotosCard({
     }
   }, [])
 
-  async function removeStoredPhoto(url: string | null) {
+  async function removeStoredPhoto(url: string | null, slot: Slot) {
     if (!url) return
-    const path = storagePathFromPublicUrl(url, franchiseId)
+    const path = storagePathFromPublicUrl(url, franchiseId, slot)
     if (!path) return
     // Best-effort — an orphaned object is not worth failing the save over.
     await createClient().storage.from(BUCKET).remove([path])
@@ -162,7 +163,7 @@ export function FranchisePhotosCard({
 
       const previous = photos[slot]
       setPhotos((prev) => ({ ...prev, [slot]: publicUrl }))
-      await removeStoredPhoto(previous)
+      await removeStoredPhoto(previous, slot).catch(() => {})
 
       saved = true
       return null
@@ -204,7 +205,7 @@ export function FranchisePhotosCard({
 
       const previous = photos[slot]
       setPhotos((prev) => ({ ...prev, [slot]: null }))
-      await removeStoredPhoto(previous)
+      await removeStoredPhoto(previous, slot).catch(() => {})
       removed = true
     } finally {
       setBusySlot(null)
@@ -318,13 +319,11 @@ export function FranchisePhotosCard({
             onCapture={(blob) => handleCapture("driver", blob)}
             onRemove={() => handleRemove("driver")}
           />
-          <PhotoSlot
-            label="Unit"
+          <UnitPhotoSlot
             photoUrl={photos.unit}
             canEdit={canEdit}
             busy={busySlot === "unit"}
-            mode="vehicle"
-            onCapture={(blob) => handleCapture("unit", blob)}
+            onUpload={(blob) => handleCapture("unit", blob)}
             onRemove={() => handleRemove("unit")}
           />
         </div>
