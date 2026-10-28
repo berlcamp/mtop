@@ -74,6 +74,11 @@ function calendarValidity(grantedAt: string | null, validityYears: number) {
   }
 }
 
+function printedDate(value: string | null): string {
+  const parts = officeDateParts(value)
+  return parts ? `${String(parts.day).padStart(2, "0")} ${MONTHS[parts.month - 1]} ${parts.year}` : ""
+}
+
 function formatDatePaid(value: string | null) {
   const paid = officeDateParts(value)
   if (!paid) return ""
@@ -116,7 +121,7 @@ export async function getFranchiseCardData(applicationId: string): Promise<{
     const franchise = application.franchise
     if (!franchise) return { error: "Franchise not found.", data: null }
 
-    const [{ data: payments }, { data: settings }, { count: priorGrants }] =
+    const [{ data: payments }, { data: settings }, { count: priorGrants }, { data: validityGrants }] =
       await Promise.all([
         supabase
           .schema("mtop")
@@ -133,6 +138,14 @@ export async function getFranchiseCardData(applicationId: string): Promise<{
           .eq("franchise_id", franchise.id)
           .eq("status", "granted")
           .lt("granted_at", application.granted_at ?? new Date().toISOString()),
+        supabase
+          .schema("mtop")
+          .from("mtop_applications")
+          .select("date_issued, granted_at, transaction_type:transaction_types(grant_effect)")
+          .eq("franchise_id", franchise.id)
+          .eq("status", "granted")
+          .lte("granted_at", application.granted_at ?? new Date().toISOString())
+          .order("granted_at", { ascending: false }),
       ])
 
     const paid = payments ?? []
@@ -141,10 +154,24 @@ export async function getFranchiseCardData(applicationId: string): Promise<{
       0
     )
 
-    const validity = calendarValidity(
+    const legacyValidity = calendarValidity(
       application.granted_at,
       settings.permit_validity_years
     )
+    const latestValidityGrant = validityGrants?.find((grant) => {
+      const type = Array.isArray(grant.transaction_type)
+        ? grant.transaction_type[0]
+        : grant.transaction_type
+      return ["issue_number", "extend_validity"].includes(type?.grant_effect ?? "")
+    })
+    const issuedDate = latestValidityGrant?.date_issued ?? latestValidityGrant?.granted_at ?? null
+    const validity = application.expiration_date && issuedDate
+      ? {
+          from: printedDate(issuedDate),
+          to: printedDate(application.expiration_date),
+          year: String(officeDateParts(issuedDate)?.year ?? ""),
+        }
+      : legacyValidity
 
     return {
       error: null,

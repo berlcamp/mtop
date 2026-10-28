@@ -138,6 +138,8 @@ export interface MtopApplication {
   due_date: string | null
   submitted_at: string
   granted_at: string | null
+  date_issued: string | null
+  expiration_date: string | null
   division_id: string | null
   created_by: string | null
   created_at: string

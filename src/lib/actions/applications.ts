@@ -24,6 +24,7 @@ import {
 import { reopenTargetStage, remarksRequiredMessage } from "@/lib/application-flow"
 import { composeAddress } from "@/lib/address"
 import { hasPermission } from "@/lib/permissions"
+import { parseDateOnly } from "@/lib/utils/plate-expiration"
 import {
   expiryBlockMessage,
   isBlockedByExpiry,
@@ -988,6 +989,9 @@ export async function updateApplicationStatus(
 ) {
   try {
     const { supabase, user } = await getAuthUser()
+    if (status === "granted") {
+      return { error: "Use the Date Issued approval flow to grant an MTOP." }
+    }
 
     // A return is the office telling the operator what to come back with, and a
     // rejection is the record of why the franchise was refused. Neither is worth
@@ -1000,9 +1004,6 @@ export async function updateApplicationStatus(
     }
 
     const updateData: Record<string, unknown> = { status }
-    if (status === "granted") {
-      updateData.granted_at = new Date().toISOString()
-    }
 
     const { error } = await supabase
       .schema("mtop")
@@ -1029,6 +1030,32 @@ export async function updateApplicationStatus(
 
     if (logError) return { error: logError.message }
 
+    revalidatePath("/dashboard/applications")
+    revalidatePath(`/dashboard/applications/${id}`)
+    return { error: null }
+  } catch (e) {
+    return { error: (e as Error).message }
+  }
+}
+
+/** Grant and log in one database transaction; the trigger reads the stored plate. */
+export async function approveAndGrantApplication(
+  id: string,
+  dateIssued: string,
+  remarks?: string
+) {
+  try {
+    const { supabase, user } = await getAuthUser()
+    if (!parseDateOnly(dateIssued)) return { error: "Select a valid Date Issued." }
+    if (!(await hasPermission(supabase, user.id, "application.grant"))) {
+      return { error: "You do not have permission to grant applications." }
+    }
+    const { error } = await supabase.schema("mtop").rpc("approve_and_grant", {
+      p_application_id: id,
+      p_date_issued: dateIssued,
+      p_remarks: remarks ?? null,
+    })
+    if (error) return { error: error.message }
     revalidatePath("/dashboard/applications")
     revalidatePath(`/dashboard/applications/${id}`)
     return { error: null }

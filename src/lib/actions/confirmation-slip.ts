@@ -67,7 +67,7 @@ function ordinalSuffix(day: number): string {
   return "th"
 }
 
-/** The day the office granted it, not the day the server was having. */
+/** The officer's issuance day; legacy records fall back to the grant timestamp. */
 function grantedParts(grantedAt: string | null) {
   const granted = officeDateParts(grantedAt)
   if (!granted)
@@ -151,7 +151,7 @@ export async function getConfirmationSlipData(applicationId: string): Promise<{
         motorNumber: franchise.motor_number ?? "",
         chassisNumber: franchise.chassis_number ?? "",
         plateNumber: franchise.plate_number ?? "",
-        ...grantedParts(application.granted_at),
+        ...grantedParts(application.date_issued ?? application.granted_at),
         // One line, however many receipts paid for the transaction.
         orNumber: paid.map((p) => p.or_number).join(", "),
         amountPaid:

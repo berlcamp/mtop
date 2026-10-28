@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import Link from "next/link"
 import { PageHeader } from "@/components/layout/page-header"
 import {
@@ -11,6 +11,7 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Button, buttonVariants } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Separator } from "@/components/ui/separator"
 import { StatusBadge } from "@/components/shared/status-badge"
 import { ApprovalStepper } from "@/components/shared/approval-stepper"
@@ -36,9 +37,13 @@ import {
   ArrowRight,
   History,
   RotateCcw,
+  CalendarDays,
+  LockKeyhole,
 } from "lucide-react"
 import { format } from "date-fns"
-import { updateApplicationStatus, reopenApplication } from "@/lib/actions/applications"
+import { updateApplicationStatus, reopenApplication, approveAndGrantApplication } from "@/lib/actions/applications"
+import { parseDateOnly, plateExpiration } from "@/lib/utils/plate-expiration"
+import { officeDateLabel } from "@/lib/office-time"
 import { checkNegativeList } from "@/lib/actions/requirements"
 import { usePermissions } from "@/lib/hooks/use-permissions"
 import { getFranchiseStatusDisplay } from "@/lib/utils/franchise-status"
@@ -143,6 +148,7 @@ export function ApplicationDetail({
   // Asks before each decision, then holds the overlay up until the page in
   // front of the clerk is the one the decision produced.
   const guard = useGuardedAction()
+  const [grantOpen, setGrantOpen] = useState(false)
   const [remarks, setRemarks] = useState("")
   // Set to the decision that was attempted with the field empty, so the field
   // itself shows the problem — and names it — rather than leaving the alert at
@@ -174,6 +180,10 @@ export function ApplicationDetail({
     newStatus: MtopStatus,
     action: "approved" | "rejected" | "returned" | "forwarded"
   ) {
+    if (newStatus === "granted") {
+      setGrantOpen(true)
+      return
+    }
     // Same rule the server enforces, read from the same place, so the form
     // cannot drift from what updateApplicationStatus() will accept.
     const remarksRequired = remarksRequiredMessage(action)
@@ -204,6 +214,20 @@ export function ApplicationDetail({
 
     setRemarks("")
     guard.finish()
+  }
+
+  async function handleGrant(dateIssued: string): Promise<string | null> {
+    guard.start(busyLabelFor("granted", "approved"))
+    setError(null)
+    const result = await approveAndGrantApplication(application.id, dateIssued, remarks || undefined)
+    if (result.error) {
+      guard.stop()
+      return result.error
+    }
+    setGrantOpen(false)
+    setRemarks("")
+    guard.finish()
+    return null
   }
 
   // A returned application resumes at the stage it was returned from; the
@@ -740,7 +764,10 @@ export function ApplicationDetail({
                   )}
                 />
               )}
-              {application.status === "granted" && franchise?.granted_until && (
+              {application.date_issued && (
+                <SummaryRow label="Date Issued" value={officeDateLabel(application.date_issued) ?? application.date_issued} />
+              )}
+              {application.status === "granted" && (application.expiration_date || franchise?.granted_until) && (
                 <SummaryRow
                   label={
                     franchise?.franchise_status &&
@@ -748,7 +775,7 @@ export function ApplicationDetail({
                       ? franchiseStatusDisplay.historicalValidityLabel
                       : "Expires"
                   }
-                  value={format(new Date(franchise.granted_until), "MMM d, yyyy")}
+                  value={officeDateLabel(application.expiration_date ?? franchise.granted_until) ?? "—"}
                 />
               )}
               {application.assessment && (
@@ -814,7 +841,92 @@ export function ApplicationDetail({
 
       {/* Portalled out of this element, so `inert` above does not reach it. */}
       {guard.element}
+      {grantOpen && (
+        <GrantApprovalDialog
+          onClose={() => setGrantOpen(false)}
+          onGrant={handleGrant}
+          grantEffect={transactionType?.grant_effect}
+          plateNumber={franchise?.plate_number ?? null}
+          existingExpiration={franchise?.granted_until ?? null}
+        />
+      )}
     </div>
+  )
+}
+
+function GrantApprovalDialog({ onClose, onGrant, grantEffect, plateNumber, existingExpiration }: {
+  onClose: () => void
+  onGrant: (dateIssued: string) => Promise<string | null>
+  grantEffect: string | undefined
+  plateNumber: string | null
+  existingExpiration: string | null
+}) {
+  const [dateIssued, setDateIssued] = useState("")
+  const [error, setError] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const validityChanging = grantEffect === "issue_number" || grantEffect === "extend_validity"
+  const dateValid = Boolean(parseDateOnly(dateIssued))
+  const expiration = validityChanging
+    ? dateValid ? plateExpiration(dateIssued, plateNumber) : null
+    : existingExpiration
+  const canSubmit = dateValid && (!validityChanging || Boolean(expiration)) && !submitting
+
+  function openPicker() {
+    const input = inputRef.current
+    if (!input) return
+    try { input.showPicker() } catch { input.focus(); input.click() }
+  }
+
+  async function submit() {
+    if (!canSubmit) return
+    setSubmitting(true)
+    setError(null)
+    const failure = await onGrant(dateIssued)
+    if (failure) {
+      setError(failure)
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open && !submitting) onClose() }}>
+      <DialogContent showCloseButton={false} className="mtop-grant-dialog min-w-0">
+        <DialogHeader>
+          <DialogTitle>Approve and grant the MTOP?</DialogTitle>
+          <DialogDescription>Granting applies this transaction to the franchise. Once granted, the record is settled and can only be changed by filing another transaction.</DialogDescription>
+        </DialogHeader>
+        <div className="grid min-w-0 grid-cols-2 gap-2.5">
+          <div className="min-w-0 space-y-1.5">
+            <label htmlFor="date-issued-picker" className="block text-sm font-medium">Date Issued</label>
+            <button type="button" onClick={openPicker} disabled={submitting}
+              aria-label={dateIssued ? `Date Issued: ${dateIssued}. Change date` : "Date Issued: Select Date"}
+              className="flex h-9 w-full min-w-0 items-center gap-1.5 rounded-lg border border-input bg-transparent px-2 text-left text-xs sm:text-sm focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50">
+              <CalendarDays className="size-4 shrink-0 text-muted-foreground" />
+              <span className="min-w-0 truncate">{dateIssued || "Select Date"}</span>
+            </button>
+            <input ref={inputRef} id="date-issued-picker" type="date" value={dateIssued}
+              onChange={(event) => { setDateIssued(event.target.value); setError(null) }}
+              aria-label="Date Issued calendar" required className="sr-only" tabIndex={-1} />
+          </div>
+          <div className="min-w-0 space-y-1.5">
+            <span className="block text-sm font-medium">Expiration Date</span>
+            <div aria-label={`Expiration Date: ${expiration ?? "—"}`}
+              className="flex h-9 w-full min-w-0 items-center justify-between gap-1 rounded-lg border border-input bg-muted/60 px-2 text-xs sm:text-sm text-muted-foreground">
+              <span className="min-w-0 truncate">{expiration ?? "—"}</span>
+              <LockKeyhole className="size-3.5 shrink-0" aria-hidden="true" />
+            </div>
+          </div>
+        </div>
+        {dateIssued && !dateValid && <p role="alert" className="text-xs text-destructive">Select a valid Date Issued.</p>}
+        {dateValid && validityChanging && !expiration && <p role="alert" className="text-xs text-destructive">The registered plate number is missing or invalid.</p>}
+        {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={submitting}>Cancel</Button>
+          <Button onClick={submit} disabled={!canSubmit}>Approve &amp; Grant</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 
