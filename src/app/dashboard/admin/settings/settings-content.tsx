@@ -63,13 +63,14 @@ export function SettingsContent({ settings }: { settings: SystemSettings }) {
             Permit Validity
           </CardTitle>
           <CardDescription>
-            How many years a permit remains valid after being granted. Once this
-            period elapses, the permit is considered expired.
+            Used to display validity on legacy Franchise Cards without stored
+            issuance and expiration dates. New Franchise and Renewal grants use
+            the dates selected during approval.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-2">
-            <Label htmlFor="permit_validity_years">Validity period (years)</Label>
+            <Label htmlFor="permit_validity_years">Legacy card validity (years)</Label>
             <Input
               id="permit_validity_years"
               type="number"

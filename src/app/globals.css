@@ -48,6 +48,18 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* Keep the approval calendar and footer within short phone viewports. */
+[data-slot="dialog-content"].mtop-grant-dialog {
+  width: min(calc(100% - 2rem), 24rem);
+  max-width: none;
+}
+
+@media (max-width: 639px) {
+  [data-slot="dialog-content"].mtop-grant-dialog {
+    top: 35%;
+  }
+}
+
 :root {
   /* Navy + Amber government palette */
   --background: oklch(0.981 0.004 252);

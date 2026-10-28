@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import Link from "next/link"
 import { PageHeader } from "@/components/layout/page-header"
 import {
@@ -11,6 +11,7 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Button, buttonVariants } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Separator } from "@/components/ui/separator"
 import { StatusBadge } from "@/components/shared/status-badge"
 import { ApprovalStepper } from "@/components/shared/approval-stepper"
@@ -36,9 +37,12 @@ import {
   ArrowRight,
   History,
   RotateCcw,
+  CalendarDays,
 } from "lucide-react"
 import { format } from "date-fns"
-import { updateApplicationStatus, reopenApplication } from "@/lib/actions/applications"
+import { updateApplicationStatus, reopenApplication, approveAndGrantApplication } from "@/lib/actions/applications"
+import { grantDateLabel, isLaterDateOnly, parseDateOnly, selectedGrantExpiration } from "@/lib/utils/plate-expiration"
+import { officeDateLabel } from "@/lib/office-time"
 import { checkNegativeList } from "@/lib/actions/requirements"
 import { usePermissions } from "@/lib/hooks/use-permissions"
 import { getFranchiseStatusDisplay } from "@/lib/utils/franchise-status"
@@ -143,6 +147,7 @@ export function ApplicationDetail({
   // Asks before each decision, then holds the overlay up until the page in
   // front of the clerk is the one the decision produced.
   const guard = useGuardedAction()
+  const [grantOpen, setGrantOpen] = useState(false)
   const [remarks, setRemarks] = useState("")
   // Set to the decision that was attempted with the field empty, so the field
   // itself shows the problem — and names it — rather than leaving the alert at
@@ -174,6 +179,10 @@ export function ApplicationDetail({
     newStatus: MtopStatus,
     action: "approved" | "rejected" | "returned" | "forwarded"
   ) {
+    if (newStatus === "granted") {
+      setGrantOpen(true)
+      return
+    }
     // Same rule the server enforces, read from the same place, so the form
     // cannot drift from what updateApplicationStatus() will accept.
     const remarksRequired = remarksRequiredMessage(action)
@@ -204,6 +213,20 @@ export function ApplicationDetail({
 
     setRemarks("")
     guard.finish()
+  }
+
+  async function handleGrant(dateIssued: string, expirationDate: string | null): Promise<string | null> {
+    guard.start(busyLabelFor("granted", "approved"))
+    setError(null)
+    const result = await approveAndGrantApplication(application.id, dateIssued, expirationDate, remarks || undefined)
+    if (result.error) {
+      guard.stop()
+      return result.error
+    }
+    setGrantOpen(false)
+    setRemarks("")
+    guard.finish()
+    return null
   }
 
   // A returned application resumes at the stage it was returned from; the
@@ -522,9 +545,9 @@ export function ApplicationDetail({
         </Alert>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid min-w-0 grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Main content — 2/3 */}
-        <div className="space-y-6 lg:col-span-2">
+        <div className="min-w-0 space-y-6 lg:col-span-2">
           {/* Applicant Info */}
           <Card>
             <CardHeader>
@@ -557,6 +580,7 @@ export function ApplicationDetail({
               applicationId={application.id}
               ownerPhotoUrl={franchise.owner_photo_url ?? null}
               driverPhotoUrl={franchise.driver_photo_url ?? null}
+              unitPhotoUrl={franchise.unit_photo_url ?? null}
               driverName={franchise.driver_name ?? null}
               driverLicenseNumber={franchise.driver_license_number ?? null}
               driverAddress={franchise.driver_address ?? null}
@@ -691,7 +715,7 @@ export function ApplicationDetail({
         </div>
 
         {/* Sidebar — 1/3 */}
-        <div className="space-y-6">
+        <div className="min-w-0 space-y-6">
           {/* Approval Stepper */}
           <Card>
             <CardHeader>
@@ -739,7 +763,10 @@ export function ApplicationDetail({
                   )}
                 />
               )}
-              {application.status === "granted" && franchise?.granted_until && (
+              {application.date_issued && (
+                <SummaryRow label="Date Issued" value={officeDateLabel(application.date_issued) ?? application.date_issued} />
+              )}
+              {application.status === "granted" && (application.expiration_date || franchise?.granted_until) && (
                 <SummaryRow
                   label={
                     franchise?.franchise_status &&
@@ -747,7 +774,7 @@ export function ApplicationDetail({
                       ? franchiseStatusDisplay.historicalValidityLabel
                       : "Expires"
                   }
-                  value={format(new Date(franchise.granted_until), "MMM d, yyyy")}
+                  value={officeDateLabel(application.expiration_date ?? franchise.granted_until) ?? "—"}
                 />
               )}
               {application.assessment && (
@@ -813,7 +840,100 @@ export function ApplicationDetail({
 
       {/* Portalled out of this element, so `inert` above does not reach it. */}
       {guard.element}
+      {grantOpen && (
+        <GrantApprovalDialog
+          key={application.id}
+          onClose={() => setGrantOpen(false)}
+          onGrant={handleGrant}
+          grantEffect={transactionType?.grant_effect}
+          plateNumber={franchise?.plate_number ?? null}
+          existingExpiration={franchise?.granted_until ?? null}
+        />
+      )}
     </div>
+  )
+}
+
+function GrantApprovalDialog({ onClose, onGrant, grantEffect, plateNumber, existingExpiration }: {
+  onClose: () => void
+  onGrant: (dateIssued: string, expirationDate: string | null) => Promise<string | null>
+  grantEffect: string | undefined
+  plateNumber: string | null
+  existingExpiration: string | null
+}) {
+  const [dateIssued, setDateIssued] = useState("")
+  const [manualExpiration, setManualExpiration] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const expirationRef = useRef<HTMLInputElement>(null)
+  const validityChanging = grantEffect === "issue_number" || grantEffect === "extend_validity"
+  const selectedExpiration = selectedGrantExpiration(grantEffect, dateIssued, plateNumber, existingExpiration, manualExpiration)
+  const dateValid = Boolean(parseDateOnly(dateIssued))
+  const expirationValid = Boolean(parseDateOnly(selectedExpiration))
+  const datesOutOfOrder = validityChanging && dateValid && expirationValid && !isLaterDateOnly(dateIssued, selectedExpiration)
+  const canSubmit = dateValid && (!validityChanging || (expirationValid && !datesOutOfOrder)) && !submitting
+
+  function openPicker() {
+    const input = inputRef.current
+    if (!input) return
+    try { input.showPicker() } catch { input.focus(); input.click() }
+  }
+
+  async function submit() {
+    if (!canSubmit) return
+    setSubmitting(true)
+    setError(null)
+    const failure = await onGrant(dateIssued, validityChanging ? selectedExpiration : null)
+    if (failure) {
+      setError(failure)
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open && !submitting) onClose() }}>
+      <DialogContent showCloseButton={false} className="mtop-grant-dialog min-w-0">
+        <DialogHeader>
+          <DialogTitle>Approve and grant the MTOP?</DialogTitle>
+          <DialogDescription>Granting applies this transaction to the franchise. Once granted, the record is settled and can only be changed by filing another transaction.</DialogDescription>
+        </DialogHeader>
+        <div className={cn("grid min-w-0 gap-2.5", validityChanging ? "grid-cols-2" : "grid-cols-1")}>
+          <div className="min-w-0 space-y-1.5">
+            <label htmlFor="date-issued-picker" className="block text-sm font-medium">Date Issued</label>
+            <button type="button" onClick={openPicker} disabled={submitting}
+              aria-label={dateIssued ? `Date Issued: ${grantDateLabel(dateIssued) ?? dateIssued}. Change date` : "Date Issued: Select Date"}
+              className="flex h-9 w-full min-w-0 items-center gap-1.5 rounded-lg border border-input bg-transparent px-2 text-left text-xs sm:text-sm focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50">
+              <CalendarDays className="size-4 shrink-0 text-muted-foreground" />
+              <span className="min-w-0 truncate">{grantDateLabel(dateIssued) ?? "Select Date"}</span>
+            </button>
+            <input ref={inputRef} id="date-issued-picker" type="date" value={dateIssued}
+              onChange={(event) => { setDateIssued(event.target.value); setError(null) }}
+              aria-label="Date Issued calendar" required className="sr-only" tabIndex={-1} />
+          </div>
+          {validityChanging && <div className="min-w-0 space-y-1.5">
+            <label htmlFor="expiration-date-picker" className="block text-sm font-medium">Expiration Date</label>
+            <button type="button" onClick={() => { try { expirationRef.current?.showPicker() } catch { expirationRef.current?.focus(); expirationRef.current?.click() } }} disabled={submitting}
+              aria-label={selectedExpiration ? `Expiration Date: ${grantDateLabel(selectedExpiration) ?? selectedExpiration}. Change date` : "Expiration Date: Select Date"}
+              className="flex h-9 w-full min-w-0 items-center gap-1.5 rounded-lg border border-input bg-transparent px-2 text-left text-xs sm:text-sm focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50">
+              <CalendarDays className="size-4 shrink-0 text-muted-foreground" />
+              <span className="min-w-0 truncate">{grantDateLabel(selectedExpiration) ?? "Select Date"}</span>
+            </button>
+            <input ref={expirationRef} id="expiration-date-picker" type="date" value={selectedExpiration}
+              onChange={(event) => { setManualExpiration(event.target.value); setError(null) }}
+              aria-label="Expiration Date calendar" required className="sr-only" tabIndex={-1} />
+          </div>}
+        </div>
+        {dateIssued && !dateValid && <p role="alert" className="text-xs text-destructive">Select a valid Date Issued.</p>}
+        {validityChanging && selectedExpiration && !expirationValid && <p role="alert" className="text-xs text-destructive">Select a valid Expiration Date.</p>}
+        {datesOutOfOrder && <p role="alert" className="text-xs text-destructive">Expiration Date must be later than Date Issued.</p>}
+        {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={submitting}>Cancel</Button>
+          <Button onClick={submit} disabled={!canSubmit}>Approve &amp; Grant</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 

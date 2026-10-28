@@ -120,6 +120,7 @@ export interface MtopFranchise {
   last_reissued_at: string | null
   owner_photo_url: string | null
   driver_photo_url: string | null
+  unit_photo_url: string | null
   driver_name: string | null
   driver_license_number: string | null
   driver_address: string | null
@@ -137,6 +138,8 @@ export interface MtopApplication {
   due_date: string | null
   submitted_at: string
   granted_at: string | null
+  date_issued: string | null
+  expiration_date: string | null
   division_id: string | null
   created_by: string | null
   created_at: string
@@ -443,6 +446,7 @@ export interface MtopSchema {
         | "updated_at"
         | "owner_photo_url"
         | "driver_photo_url"
+        | "unit_photo_url"
         | "driver_name"
         | "driver_license_number"
         | "driver_address"
@@ -466,6 +470,7 @@ export interface MtopSchema {
         updated_at?: string
         owner_photo_url?: string | null
         driver_photo_url?: string | null
+        unit_photo_url?: string | null
         driver_name?: string | null
         driver_license_number?: string | null
         driver_address?: string | null
