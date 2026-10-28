@@ -24,7 +24,7 @@ import {
 import { reopenTargetStage, remarksRequiredMessage } from "@/lib/application-flow"
 import { composeAddress } from "@/lib/address"
 import { hasPermission } from "@/lib/permissions"
-import { parseDateOnly } from "@/lib/utils/plate-expiration"
+import { isLaterDateOnly, parseDateOnly } from "@/lib/utils/plate-expiration"
 import {
   expiryBlockMessage,
   isBlockedByExpiry,
@@ -1038,10 +1038,11 @@ export async function updateApplicationStatus(
   }
 }
 
-/** Grant and log in one database transaction; the trigger reads the stored plate. */
+/** Grant and log in one database transaction. */
 export async function approveAndGrantApplication(
   id: string,
   dateIssued: string,
+  expirationDate: string | null,
   remarks?: string
 ) {
   try {
@@ -1050,9 +1051,27 @@ export async function approveAndGrantApplication(
     if (!(await hasPermission(supabase, user.id, "application.grant"))) {
       return { error: "You do not have permission to grant applications." }
     }
+    const { data: application, error: applicationError } = await supabase.schema("mtop")
+      .from("mtop_applications")
+      .select("status, transaction_type:transaction_types(grant_effect)")
+      .eq("id", id).single()
+    if (applicationError || !application) return { error: applicationError?.message ?? "Application not found." }
+    if (application.status !== "for_approval") return { error: "Application is no longer awaiting approval." }
+    const transactionType = Array.isArray(application.transaction_type) ? application.transaction_type[0] : application.transaction_type
+    const effect = transactionType?.grant_effect
+    const validityChanging = effect === "issue_number" || effect === "extend_validity"
+    if (!effect) return { error: "Grant transaction is missing." }
+    if (validityChanging && (!expirationDate || !parseDateOnly(expirationDate))) {
+      return { error: "Select a valid Expiration Date." }
+    }
+    if (validityChanging && !isLaterDateOnly(dateIssued, expirationDate!)) {
+      return { error: "Expiration Date must be later than Date Issued." }
+    }
+    if (!validityChanging && expirationDate !== null) return { error: "Expiration Date is not allowed for this transaction." }
     const { error } = await supabase.schema("mtop").rpc("approve_and_grant", {
       p_application_id: id,
       p_date_issued: dateIssued,
+      p_expiration_date: expirationDate,
       p_remarks: remarks ?? null,
     })
     if (error) return { error: error.message }

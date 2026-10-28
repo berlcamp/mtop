@@ -64,7 +64,8 @@ export function SettingsContent({ settings }: { settings: SystemSettings }) {
           </CardTitle>
           <CardDescription>
             Used to display validity on legacy Franchise Cards without stored
-            issuance and expiration dates. New grants use the registered plate.
+            issuance and expiration dates. New Franchise and Renewal grants use
+            the dates selected during approval.
           </CardDescription>
         </CardHeader>
         <CardContent>

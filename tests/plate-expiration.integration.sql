@@ -1,3 +1,4 @@
+-- Final manual-grant contract after migrations 20261027000034 and 20261028000035.
 -- Run on the positively identified local MTOP database only.
 -- Every synthetic record and audit row is rolled back.
 BEGIN;
@@ -9,6 +10,7 @@ DECLARE
   v_app uuid;
   v_issued date := '2026-06-01';
   v_prior date := '2028-07-15';
+  v_selected date := '2030-12-31';
   v_expected date;
   v_actual date;
   v_status text;
@@ -59,47 +61,69 @@ BEGIN
 
     IF v_type.grant_effect = 'issue_number' THEN
       BEGIN
-        PERFORM mtop.approve_and_grant(v_app, NULL, NULL);
+        PERFORM mtop.approve_and_grant(v_app, NULL, v_selected, NULL);
         RAISE EXCEPTION 'Missing issuance date was accepted';
       EXCEPTION WHEN OTHERS THEN
         IF SQLERRM = 'Missing issuance date was accepted' THEN RAISE; END IF;
       END;
-      UPDATE mtop.mtop_franchises SET plate_number = 'ZZTEST-INVALID' WHERE id = v_franchise;
       BEGIN
-        PERFORM mtop.approve_and_grant(v_app, v_issued, NULL);
-        RAISE EXCEPTION 'Invalid plate was accepted';
+        PERFORM mtop.approve_and_grant(v_app, v_issued, NULL, NULL);
+        RAISE EXCEPTION 'Missing expiration was accepted';
       EXCEPTION WHEN OTHERS THEN
-        IF SQLERRM = 'Invalid plate was accepted' THEN RAISE; END IF;
+        IF SQLERRM = 'Missing expiration was accepted' THEN RAISE; END IF;
+      END;
+      BEGIN
+        PERFORM mtop.approve_and_grant(v_app, v_issued, v_issued, NULL);
+        RAISE EXCEPTION 'Non-later expiration was accepted';
+      EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM = 'Non-later expiration was accepted' THEN RAISE; END IF;
       END;
       SELECT status::text INTO v_status FROM mtop.mtop_applications WHERE id = v_app;
       IF v_status <> 'for_approval' THEN RAISE EXCEPTION 'Failed grant changed status'; END IF;
-      UPDATE mtop.mtop_franchises SET plate_number = 'ZZTEST-PLATE-' || v_counter || '2' WHERE id = v_franchise;
       PERFORM set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-000000000001', true);
       BEGIN
-        PERFORM mtop.approve_and_grant(v_app, v_issued, NULL);
+        PERFORM mtop.approve_and_grant(v_app, v_issued, v_selected, NULL);
         RAISE EXCEPTION 'Unauthorized grant was accepted';
       EXCEPTION WHEN OTHERS THEN
         IF SQLERRM = 'Unauthorized grant was accepted' THEN RAISE; END IF;
       END;
       PERFORM set_config('request.jwt.claim.sub', v_actor::text, true);
+    ELSIF v_type.grant_effect = 'extend_validity' THEN
+      BEGIN
+        PERFORM mtop.approve_and_grant(v_app, v_issued, NULL, NULL);
+        RAISE EXCEPTION 'Missing renewal expiration was accepted';
+      EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM = 'Missing renewal expiration was accepted' THEN RAISE; END IF;
+      END;
+    ELSE
+      BEGIN
+        PERFORM mtop.approve_and_grant(v_app, v_issued, v_selected, NULL);
+        RAISE EXCEPTION 'Administrative expiration was accepted';
+      EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM = 'Administrative expiration was accepted' THEN RAISE; END IF;
+      END;
     END IF;
 
-    PERFORM mtop.approve_and_grant(v_app, v_issued, 'ZZTEST transaction');
+    PERFORM mtop.approve_and_grant(v_app, v_issued,
+      CASE WHEN v_type.grant_effect IN ('issue_number','extend_validity') THEN v_selected ELSE NULL END,
+      'ZZTEST transaction');
     SELECT f.granted_until INTO v_actual FROM mtop.mtop_franchises f WHERE f.id = v_franchise;
     v_expected := CASE WHEN v_type.grant_effect IN ('issue_number','extend_validity')
-      THEN DATE '2028-12-31' ELSE CASE WHEN v_type.grant_effect = 'issue_number' THEN NULL ELSE v_prior END END;
+      THEN v_selected ELSE v_prior END;
     IF v_actual IS DISTINCT FROM v_expected THEN
       RAISE EXCEPTION '% expiration: got %, expected %', v_type.code, v_actual, v_expected;
     END IF;
     IF NOT EXISTS (SELECT 1 FROM mtop.mtop_applications WHERE id = v_app
       AND status = 'granted' AND date_issued = v_issued AND granted_at IS NOT NULL
-      AND expiration_date IS NOT DISTINCT FROM v_expected) THEN
+      AND expiration_date IS NOT DISTINCT FROM
+        CASE WHEN v_type.grant_effect IN ('issue_number','extend_validity') THEN v_selected ELSE NULL END) THEN
       RAISE EXCEPTION '% date/status did not persist', v_type.code;
     END IF;
     SELECT count(*) INTO v_log_count FROM mtop.approval_logs WHERE application_id = v_app AND action = 'approved';
     IF v_log_count <> 1 THEN RAISE EXCEPTION '% logged % approvals', v_type.code, v_log_count; END IF;
     BEGIN
-      PERFORM mtop.approve_and_grant(v_app, v_issued, NULL);
+      PERFORM mtop.approve_and_grant(v_app, v_issued,
+        CASE WHEN v_type.grant_effect IN ('issue_number','extend_validity') THEN v_selected ELSE NULL END, NULL);
       RAISE EXCEPTION 'Duplicate grant was accepted';
     EXCEPTION WHEN OTHERS THEN
       IF SQLERRM = 'Duplicate grant was accepted' THEN RAISE; END IF;

@@ -38,11 +38,10 @@ import {
   History,
   RotateCcw,
   CalendarDays,
-  LockKeyhole,
 } from "lucide-react"
 import { format } from "date-fns"
 import { updateApplicationStatus, reopenApplication, approveAndGrantApplication } from "@/lib/actions/applications"
-import { parseDateOnly, plateExpiration } from "@/lib/utils/plate-expiration"
+import { grantDateLabel, isLaterDateOnly, parseDateOnly, selectedGrantExpiration } from "@/lib/utils/plate-expiration"
 import { officeDateLabel } from "@/lib/office-time"
 import { checkNegativeList } from "@/lib/actions/requirements"
 import { usePermissions } from "@/lib/hooks/use-permissions"
@@ -216,10 +215,10 @@ export function ApplicationDetail({
     guard.finish()
   }
 
-  async function handleGrant(dateIssued: string): Promise<string | null> {
+  async function handleGrant(dateIssued: string, expirationDate: string | null): Promise<string | null> {
     guard.start(busyLabelFor("granted", "approved"))
     setError(null)
-    const result = await approveAndGrantApplication(application.id, dateIssued, remarks || undefined)
+    const result = await approveAndGrantApplication(application.id, dateIssued, expirationDate, remarks || undefined)
     if (result.error) {
       guard.stop()
       return result.error
@@ -843,6 +842,7 @@ export function ApplicationDetail({
       {guard.element}
       {grantOpen && (
         <GrantApprovalDialog
+          key={application.id}
           onClose={() => setGrantOpen(false)}
           onGrant={handleGrant}
           grantEffect={transactionType?.grant_effect}
@@ -856,21 +856,23 @@ export function ApplicationDetail({
 
 function GrantApprovalDialog({ onClose, onGrant, grantEffect, plateNumber, existingExpiration }: {
   onClose: () => void
-  onGrant: (dateIssued: string) => Promise<string | null>
+  onGrant: (dateIssued: string, expirationDate: string | null) => Promise<string | null>
   grantEffect: string | undefined
   plateNumber: string | null
   existingExpiration: string | null
 }) {
   const [dateIssued, setDateIssued] = useState("")
+  const [manualExpiration, setManualExpiration] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  const expirationRef = useRef<HTMLInputElement>(null)
   const validityChanging = grantEffect === "issue_number" || grantEffect === "extend_validity"
+  const selectedExpiration = selectedGrantExpiration(grantEffect, dateIssued, plateNumber, existingExpiration, manualExpiration)
   const dateValid = Boolean(parseDateOnly(dateIssued))
-  const expiration = validityChanging
-    ? dateValid ? plateExpiration(dateIssued, plateNumber) : null
-    : existingExpiration
-  const canSubmit = dateValid && (!validityChanging || Boolean(expiration)) && !submitting
+  const expirationValid = Boolean(parseDateOnly(selectedExpiration))
+  const datesOutOfOrder = validityChanging && dateValid && expirationValid && !isLaterDateOnly(dateIssued, selectedExpiration)
+  const canSubmit = dateValid && (!validityChanging || (expirationValid && !datesOutOfOrder)) && !submitting
 
   function openPicker() {
     const input = inputRef.current
@@ -882,7 +884,7 @@ function GrantApprovalDialog({ onClose, onGrant, grantEffect, plateNumber, exist
     if (!canSubmit) return
     setSubmitting(true)
     setError(null)
-    const failure = await onGrant(dateIssued)
+    const failure = await onGrant(dateIssued, validityChanging ? selectedExpiration : null)
     if (failure) {
       setError(failure)
       setSubmitting(false)
@@ -896,30 +898,35 @@ function GrantApprovalDialog({ onClose, onGrant, grantEffect, plateNumber, exist
           <DialogTitle>Approve and grant the MTOP?</DialogTitle>
           <DialogDescription>Granting applies this transaction to the franchise. Once granted, the record is settled and can only be changed by filing another transaction.</DialogDescription>
         </DialogHeader>
-        <div className="grid min-w-0 grid-cols-2 gap-2.5">
+        <div className={cn("grid min-w-0 gap-2.5", validityChanging ? "grid-cols-2" : "grid-cols-1")}>
           <div className="min-w-0 space-y-1.5">
             <label htmlFor="date-issued-picker" className="block text-sm font-medium">Date Issued</label>
             <button type="button" onClick={openPicker} disabled={submitting}
-              aria-label={dateIssued ? `Date Issued: ${dateIssued}. Change date` : "Date Issued: Select Date"}
+              aria-label={dateIssued ? `Date Issued: ${grantDateLabel(dateIssued) ?? dateIssued}. Change date` : "Date Issued: Select Date"}
               className="flex h-9 w-full min-w-0 items-center gap-1.5 rounded-lg border border-input bg-transparent px-2 text-left text-xs sm:text-sm focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50">
               <CalendarDays className="size-4 shrink-0 text-muted-foreground" />
-              <span className="min-w-0 truncate">{dateIssued || "Select Date"}</span>
+              <span className="min-w-0 truncate">{grantDateLabel(dateIssued) ?? "Select Date"}</span>
             </button>
             <input ref={inputRef} id="date-issued-picker" type="date" value={dateIssued}
               onChange={(event) => { setDateIssued(event.target.value); setError(null) }}
               aria-label="Date Issued calendar" required className="sr-only" tabIndex={-1} />
           </div>
-          <div className="min-w-0 space-y-1.5">
-            <span className="block text-sm font-medium">Expiration Date</span>
-            <div aria-label={`Expiration Date: ${expiration ?? "—"}`}
-              className="flex h-9 w-full min-w-0 items-center justify-between gap-1 rounded-lg border border-input bg-muted/60 px-2 text-xs sm:text-sm text-muted-foreground">
-              <span className="min-w-0 truncate">{expiration ?? "—"}</span>
-              <LockKeyhole className="size-3.5 shrink-0" aria-hidden="true" />
-            </div>
-          </div>
+          {validityChanging && <div className="min-w-0 space-y-1.5">
+            <label htmlFor="expiration-date-picker" className="block text-sm font-medium">Expiration Date</label>
+            <button type="button" onClick={() => { try { expirationRef.current?.showPicker() } catch { expirationRef.current?.focus(); expirationRef.current?.click() } }} disabled={submitting}
+              aria-label={selectedExpiration ? `Expiration Date: ${grantDateLabel(selectedExpiration) ?? selectedExpiration}. Change date` : "Expiration Date: Select Date"}
+              className="flex h-9 w-full min-w-0 items-center gap-1.5 rounded-lg border border-input bg-transparent px-2 text-left text-xs sm:text-sm focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50">
+              <CalendarDays className="size-4 shrink-0 text-muted-foreground" />
+              <span className="min-w-0 truncate">{grantDateLabel(selectedExpiration) ?? "Select Date"}</span>
+            </button>
+            <input ref={expirationRef} id="expiration-date-picker" type="date" value={selectedExpiration}
+              onChange={(event) => { setManualExpiration(event.target.value); setError(null) }}
+              aria-label="Expiration Date calendar" required className="sr-only" tabIndex={-1} />
+          </div>}
         </div>
         {dateIssued && !dateValid && <p role="alert" className="text-xs text-destructive">Select a valid Date Issued.</p>}
-        {dateValid && validityChanging && !expiration && <p role="alert" className="text-xs text-destructive">The registered plate number is missing or invalid.</p>}
+        {validityChanging && selectedExpiration && !expirationValid && <p role="alert" className="text-xs text-destructive">Select a valid Expiration Date.</p>}
+        {datesOutOfOrder && <p role="alert" className="text-xs text-destructive">Expiration Date must be later than Date Issued.</p>}
         {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={submitting}>Cancel</Button>
