@@ -57,7 +57,7 @@ export function suggestNewFranchiseExpiration(dateIssued: string, plateNumber: s
   if (startYear > 9999) return null
   const anniversary = dateOnly(startYear, issued.month, Math.min(issued.day, daysInMonth(startYear, issued.month)))
   for (let year = startYear; year <= 9999; year++) {
-    const candidate = dateOnly(year, month, daysInMonth(year, month))
+    const candidate = dateOnly(year, month, month === 2 ? 28 : daysInMonth(year, month))
     if (candidate >= anniversary) return candidate
   }
   return null
@@ -68,7 +68,7 @@ export function suggestRenewalExpiration(previousExpiration: string | null | und
   const previous = previousExpiration ? parseDateOnly(previousExpiration) : null
   if (!previous || previous.year > 9996) return null
   const year = previous.year + 3
-  return dateOnly(year, previous.month, daysInMonth(year, previous.month))
+  return dateOnly(year, previous.month, previous.month === 2 ? 28 : daysInMonth(year, previous.month))
 }
 
 /** Resolve the visible and submitted date; null means the officer has not edited it. */
