@@ -4,6 +4,8 @@ import { createClient } from "@/lib/supabase/server"
 import { getSystemSettings } from "@/lib/actions/settings"
 import { displayAddress } from "@/lib/address"
 import { officeDateParts } from "@/lib/office-time"
+import { confirmationSlipGivenDate } from "@/lib/confirmation-slip-date"
+import { hasPermission } from "@/lib/permissions"
 
 async function getAuthUser() {
   const supabase = await createClient()
@@ -30,55 +32,19 @@ export interface ConfirmationSlipData {
   motorNumber: string
   chassisNumber: string
   plateNumber: string
-  /** "13", with `grantedOrdinal` carrying the "th" that is set superscript. */
-  grantedDay: string
-  grantedOrdinal: string
-  grantedMonth: string
-  grantedYear: string
+  /** Current Asia/Manila date when the Confirmation Slip is generated. */
+  givenDay: string
+  givenOrdinal: string
+  givenMonth: string
+  givenYear: string
   orNumber: string
   amountPaid: string
   datePaid: string
   issuedAt: string
   /** Signatory, from system settings — a new mayor is not a deployment. */
   mayorName: string
-}
-
-const MONTHS = [
-  "January",
-  "February",
-  "March",
-  "April",
-  "May",
-  "June",
-  "July",
-  "August",
-  "September",
-  "October",
-  "November",
-  "December",
-]
-
-/** 1st, 2nd, 3rd, 4th … 11th, 12th, 13th … 21st. */
-function ordinalSuffix(day: number): string {
-  if (day >= 11 && day <= 13) return "th"
-  if (day % 10 === 1) return "st"
-  if (day % 10 === 2) return "nd"
-  if (day % 10 === 3) return "rd"
-  return "th"
-}
-
-/** The officer's issuance day; legacy records fall back to the grant timestamp. */
-function grantedParts(grantedAt: string | null) {
-  const granted = officeDateParts(grantedAt)
-  if (!granted)
-    return { grantedDay: "", grantedOrdinal: "", grantedMonth: "", grantedYear: "" }
-
-  return {
-    grantedDay: String(granted.day),
-    grantedOrdinal: ordinalSuffix(granted.day),
-    grantedMonth: MONTHS[granted.month - 1],
-    grantedYear: String(granted.year),
-  }
+  mayorDesignation: string
+  mayorSignatureUrl: string | null
 }
 
 /** The slip writes the OR date numerically — 03/27/2026. */
@@ -95,7 +61,10 @@ export async function getConfirmationSlipData(applicationId: string): Promise<{
   data: ConfirmationSlipData | null
 }> {
   try {
-    const { supabase } = await getAuthUser()
+    const { supabase, user } = await getAuthUser()
+    if (!(await hasPermission(supabase, user.id, "application.view"))) {
+      return { error: "You do not have permission to view confirmation slips.", data: null }
+    }
 
     const { data: application, error } = await supabase
       .schema("mtop")
@@ -121,7 +90,7 @@ export async function getConfirmationSlipData(applicationId: string): Promise<{
     const franchise = application.franchise
     if (!franchise) return { error: "Franchise not found.", data: null }
 
-    const [{ data: payments }, { data: settings }] = await Promise.all([
+    const [{ data: payments }, settingsResult] = await Promise.all([
       supabase
         .schema("mtop")
         .from("mtop_payments")
@@ -130,6 +99,20 @@ export async function getConfirmationSlipData(applicationId: string): Promise<{
         .order("payment_date", { ascending: true }),
       getSystemSettings(),
     ])
+
+    if (settingsResult.error) return { error: settingsResult.error, data: null }
+    const settings = settingsResult.data
+
+    // Confirmation Slips use the same CURRENT Mayor configuration as regenerated
+    // Franchise Cards; no signature URL is stored on the application record.
+    let mayorSignatureUrl: string | null = null
+    if (settings.mayor_signature_path) {
+      const { data: signature, error: signatureError } = await supabase.storage
+        .from("mtop-signatures")
+        .createSignedUrl(settings.mayor_signature_path, 300)
+      if (signatureError) return { error: `Cannot load Mayor signature: ${signatureError.message}`, data: null }
+      mayorSignatureUrl = signature?.signedUrl ?? null
+    }
 
     const paid = payments ?? []
     const total = paid.reduce(
@@ -151,7 +134,7 @@ export async function getConfirmationSlipData(applicationId: string): Promise<{
         motorNumber: franchise.motor_number ?? "",
         chassisNumber: franchise.chassis_number ?? "",
         plateNumber: franchise.plate_number ?? "",
-        ...grantedParts(application.date_issued ?? application.granted_at),
+        ...confirmationSlipGivenDate(),
         // One line, however many receipts paid for the transaction.
         orNumber: paid.map((p) => p.or_number).join(", "),
         amountPaid:
@@ -164,6 +147,8 @@ export async function getConfirmationSlipData(applicationId: string): Promise<{
         datePaid: formatSlipDate(paid[0]?.payment_date ?? null),
         issuedAt: paid.length > 0 ? "OZAMIZ CITY" : "",
         mayorName: settings.mayor_name,
+        mayorDesignation: settings.mayor_designation,
+        mayorSignatureUrl,
       },
     }
   } catch (e) {

@@ -1,4 +1,19 @@
-# MTOP Operators
+# Project progress
+
+## Current-official signatories — single migration candidate (2026-11-16)
+
+- Branch: `feat/current-official-signatures-single-migration` (separate from Draft PR #19).
+- The Franchise Card and Confirmation Slip always read the **currently configured** Mayor and City Treasurer names, designations and signature paths from Admin Settings. No application-level historical signatory snapshots are created or read.
+- **Exactly one new signatory migration** relative to upstream `main`:
+  `supabase/migrations/20261113000001_official_signatures.sql`.
+  It creates a private `mtop-signatures` bucket, permission-controlled staff reads/admin uploads, admin-only orphan cleanup protecting active settings references, and signatory-settings audit history. No snapshot table or grant-status trigger is created.
+- The two obsolete migration files (`20261113000002_franchise_card_signatory_snapshots.sql` and `20261116000003_remove_franchise_card_signatory_snapshots.sql`) are absent on this branch. All other existing project migrations remain intact.
+- The isolated MTOP sandbox previously applied all three migration versions and ended at the equivalent desired schema. **Do not reapply or edit its migration history automatically**: applying the one-file version to a fresh official database differs from reconciling the existing sandbox's migration history.
+- Existing permits, grant dates, and payment dates remain unchanged. Old downloaded PDFs are not rewritten. The Confirmation Slip's "Given this" date uses the current Asia/Manila date when generated.
+- Regenerating cards/downloads uses active officials; the current signature image paths are protected from deletion while referenced in settings. Replaced unreferenced objects may be cleaned by authorized administrators.
+- Before official rollout, validate migration on a clean isolated database with RLS roles, upload/replace/remove, signed URLs, print/PDF formatting (8.5 × 13 inches) and no leftover snapshot table/trigger. Do not apply to production or merge without approval.
+
+## MTOP Operators
 
 - Added `/dashboard/operators` and `/dashboard/operators/[id]`, with a sidebar
   entry directly below Applications.

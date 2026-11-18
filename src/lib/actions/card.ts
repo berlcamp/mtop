@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server"
 import { getSystemSettings } from "@/lib/actions/settings"
 import { displayAddress } from "@/lib/address"
 import { officeDateParts } from "@/lib/office-time"
+import { hasPermission } from "@/lib/permissions"
 
 async function getAuthUser() {
   const supabase = await createClient()
@@ -37,6 +38,12 @@ export interface FranchiseCardData {
   orNumber: string
   amountPaid: string
   datePaid: string
+  mayorName: string
+  mayorDesignation: string
+  mayorSignatureUrl: string | null
+  treasurerName: string
+  treasurerDesignation: string
+  treasurerSignatureUrl: string | null
 }
 
 const MONTHS = [
@@ -98,7 +105,10 @@ export async function getFranchiseCardData(applicationId: string): Promise<{
   data: FranchiseCardData | null
 }> {
   try {
-    const { supabase } = await getAuthUser()
+    const { supabase, user } = await getAuthUser()
+    if (!(await hasPermission(supabase, user.id, "application.view"))) {
+      return { error: "You do not have permission to view franchise cards.", data: null }
+    }
 
     const { data: application, error } = await supabase
       .schema("mtop")
@@ -121,7 +131,7 @@ export async function getFranchiseCardData(applicationId: string): Promise<{
     const franchise = application.franchise
     if (!franchise) return { error: "Franchise not found.", data: null }
 
-    const [{ data: payments }, { data: settings }, { count: priorGrants }, { data: validityGrants }] =
+    const [{ data: payments }, settingsResult, { count: priorGrants }, { data: validityGrants }] =
       await Promise.all([
         supabase
           .schema("mtop")
@@ -148,6 +158,9 @@ export async function getFranchiseCardData(applicationId: string): Promise<{
           .order("granted_at", { ascending: false }),
       ])
 
+    if (settingsResult.error) return { error: settingsResult.error, data: null }
+    const settings = settingsResult.data
+
     const paid = payments ?? []
     const total = paid.reduce(
       (sum: number, p: { amount_paid: number }) => sum + Number(p.amount_paid),
@@ -172,6 +185,17 @@ export async function getFranchiseCardData(applicationId: string): Promise<{
           year: String(officeDateParts(issuedDate)?.year ?? ""),
         }
       : legacyValidity
+
+    const signatureUrl = async (path: string) => {
+      if (!path) return null
+      const { data, error } = await supabase.storage.from("mtop-signatures").createSignedUrl(path, 300)
+      if (error) throw error
+      return data.signedUrl
+    }
+    const [mayorSignatureUrl, treasurerSignatureUrl] = await Promise.all([
+      signatureUrl(settings.mayor_signature_path),
+      signatureUrl(settings.city_treasurer_signature_path),
+    ])
 
     return {
       error: null,
@@ -202,6 +226,12 @@ export async function getFranchiseCardData(applicationId: string): Promise<{
         orNumber: paid.map((p) => p.or_number).join(", "),
         amountPaid: paid.length > 0 ? formatPeso(total) : "",
         datePaid: formatDatePaid(paid[0]?.payment_date ?? null),
+        mayorName: settings.mayor_name,
+        mayorDesignation: settings.mayor_designation,
+        mayorSignatureUrl,
+        treasurerName: settings.city_treasurer_name,
+        treasurerDesignation: settings.city_treasurer_designation,
+        treasurerSignatureUrl,
       },
     }
   } catch (e) {
